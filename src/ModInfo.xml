@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xml>
+  <Name value="CompanionAIVerify" />
+  <DisplayName value="Companion AI (Verify)" />
+  <Version value="0.0.1" />
+  <Description value="hold/follow locomotion verification harness. Client-side. Middle-layer (movementInput overwrite) only. Install on the COMPANION client PC only." />
+  <Author value="yuichi" />
+  <!-- Harmony 依存のみ。SCore 不要（プレイヤークライアント型のため）。 -->
+</xml>
