@@ -1,0 +1,31 @@
+# CompanionAI verify harness config (v0.5.4)
+# 変更後、ゲーム内で F8（ドライブ切替）を押すと再読込されます。起動時にも読込。
+# bool = true/false (1/0/on/off も可) , float = 小数点は '.'（例 3.0）
+
+# --- 交戦の基本 ---
+CombatMode            = true
+EnableRangedFire      = true
+
+# --- 追従 ---
+StandoffMeters        = 3.0
+RunMeters             = 8.0
+
+# --- 脅威検知 ---
+ThreatScanRadius      = 20.0
+LogThrottleSec        = 0.5
+
+# --- 近接 ---
+ReachBuffer           = 0.5
+
+# --- 狙点（頭/胴の切替しきい値, m）---
+HeadAimMinLift        = 1.2
+
+# --- 発砲 ---
+RangedMaxEngageMeters = 18.0
+RangedFireIntervalSec = 0.4
+
+# --- カメラ/視差/ADS（A/B対象）---
+ForceFirstPerson      = false
+SnapCameraOnFire      = true
+AimFromCameraOrigin   = true
+AimDownSightsOnEngage = true
