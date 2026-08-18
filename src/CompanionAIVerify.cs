@@ -3,6 +3,12 @@ using HarmonyLib;
 using UnityEngine;
 
 // =============================================================================
+// Companion AI verify harness — Build v0.7.1
+//   変更点: 武器認識を config 可能化。単一の WeaponClassifier を新設し、
+//           WeaponSelector（自動選択）と ItemStower（ツールベルト昇格）が共用する。
+//           - auto  : 型フォールバック有効（工具も近接武器扱い）＋名前/タグで除外・追加
+//           - strict: include に載せた名前/タグのみ武器（全指定）
+//
 // Companion AI verify harness — Build v0.7.0
 //   (A) 交戦距離に応じた武器自動切替（近接⇄銃）  … 新 engage capability
 //   (B) 武器のツールベルト優先配置                … 非ホットパス・ユーティリティ
@@ -197,6 +203,15 @@ namespace CompanionAIVerify
         internal static float   PickupRadius               = 6.0f;
         internal static float   PickupScanIntervalSec      = 0.5f;
         internal static bool    PickupUnowned              = false;  // belongsPlayerId<=0 も拾う
+
+        // ★ v0.7.1: 武器認識（stow / select 共用）
+        internal static string  WeaponClassifyMode         = "auto";           // "auto" | "strict"
+        internal static string  MeleeWeaponNames           = "";               // include（XML名, CSV）
+        internal static string  RangedWeaponNames          = "";               // include（XML名, CSV）
+        internal static string  WeaponExcludeNames         = "meleeToolTorch"; // 除外（XML名, CSV）※名前は要XML確認
+        internal static string  MeleeWeaponTags            = "";               // include（タグ, CSV）
+        internal static string  RangedWeaponTags           = "";               // include（タグ, CSV）
+        internal static string  WeaponExcludeTags          = "";               // 除外（タグ, CSV）
     }
 
     // --- 外部設定ファイル (companion_config.txt) -------------------------------
@@ -293,7 +308,18 @@ namespace CompanionAIVerify
                 case "RangedFireIntervalSec":      return TryF(val, ref Cfg.RangedFireIntervalSec);
                 case "AutoWeaponSwitch":           return TryBool(val, ref Cfg.AutoWeaponSwitch);
                 case "AutoStowWeaponsToToolbelt":  return TryBool(val, ref Cfg.AutoStowWeaponsToToolbelt);
-                case "StowDynamicMelee":           return TryBool(val, ref Cfg.StowDynamicMelee);
+                case "WeaponClassifyMode":
+                {
+                    string m = val.Trim().ToLowerInvariant();
+                    if (m == "auto" || m == "strict") { Cfg.WeaponClassifyMode = m; return true; }
+                    return false;
+                }
+                case "MeleeWeaponNames":   Cfg.MeleeWeaponNames   = val; return true;
+                case "RangedWeaponNames":  Cfg.RangedWeaponNames  = val; return true;
+                case "WeaponExcludeNames": Cfg.WeaponExcludeNames = val; return true;
+                case "MeleeWeaponTags":    Cfg.MeleeWeaponTags    = val; return true;
+                case "RangedWeaponTags":   Cfg.RangedWeaponTags   = val; return true;
+                case "WeaponExcludeTags":  Cfg.WeaponExcludeTags  = val; return true;
                 case "AutoPickupLeaderDrops":      return TryBool(val, ref Cfg.AutoPickupLeaderDrops);
                 case "PickupUnowned":              return TryBool(val, ref Cfg.PickupUnowned);
                 case "SwitchToMeleeMeters":        return TryF(val, ref Cfg.SwitchToMeleeMeters);
@@ -836,6 +862,95 @@ namespace CompanionAIVerify
 
     internal enum WeaponMode { None, Melee, Ranged }
 
+    // --- 武器分類器（stow / select 共用の単一チョークポイント） ---------------
+    //   優先: 除外(名前/タグ) > 名前 include > タグ include > auto時のみ型フォールバック。
+    //   parse 済みセットはキャッシュし、Rebuild() でのみ再構築（毎フレーム alloc 回避）。
+    internal static class WeaponClassifier
+    {
+        private static bool _built;
+        private static HashSet<string> _meleeNames  = Empty();
+        private static HashSet<string> _rangedNames = Empty();
+        private static HashSet<string> _excludeNames = Empty();
+        private static FastTags<TagGroup.Global> _meleeTags, _rangedTags, _excludeTags;
+        private static bool _hasMeleeTags, _hasRangedTags, _hasExcludeTags;
+
+        private static HashSet<string> Empty()
+            => new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+
+        // config 読込後（F8 等）に呼ぶ。RefreshLoadout から駆動される。
+        internal static void Rebuild()
+        {
+            _built = true;
+            _meleeNames   = ParseNames(Cfg.MeleeWeaponNames);
+            _rangedNames  = ParseNames(Cfg.RangedWeaponNames);
+            _excludeNames = ParseNames(Cfg.WeaponExcludeNames);
+            _meleeTags    = ParseTags(Cfg.MeleeWeaponTags,   out _hasMeleeTags);
+            _rangedTags   = ParseTags(Cfg.RangedWeaponTags,  out _hasRangedTags);
+            _excludeTags  = ParseTags(Cfg.WeaponExcludeTags, out _hasExcludeTags);
+
+            bool strict = Cfg.WeaponClassifyMode == "strict";
+            bool noIncludes = _meleeNames.Count == 0 && _rangedNames.Count == 0
+                              && !_hasMeleeTags && !_hasRangedTags;
+            if (strict && noIncludes)
+                Log.Warning("[CompanionAI] weapon-classify: strict モードだが include 指定が空 = 全アイテム非武器扱い。");
+            else
+                Log.Out(string.Format(
+                    "[CompanionAI] weapon-classify: mode={0} meleeNames={1} rangedNames={2} excludeNames={3} tags(m/r/x)={4}/{5}/{6}",
+                    Cfg.WeaponClassifyMode, _meleeNames.Count, _rangedNames.Count, _excludeNames.Count,
+                    _hasMeleeTags ? 1 : 0, _hasRangedTags ? 1 : 0, _hasExcludeTags ? 1 : 0));
+        }
+
+        internal static WeaponMode Classify(ItemClass ic)
+        {
+            if (ic == null) return WeaponMode.None;
+            if (!_built) Rebuild();
+
+            string name = ic.Name ?? "";
+
+            // 1) 除外（最優先）
+            if (_excludeNames.Contains(name)) return WeaponMode.None;
+            if (_hasExcludeTags && ic.ItemTags.Test_AnySet(_excludeTags)) return WeaponMode.None;
+
+            // 2) 名前 include
+            if (_rangedNames.Contains(name)) return WeaponMode.Ranged;
+            if (_meleeNames.Contains(name))  return WeaponMode.Melee;
+
+            // 3) タグ include
+            if (_hasRangedTags && ic.ItemTags.Test_AnySet(_rangedTags)) return WeaponMode.Ranged;
+            if (_hasMeleeTags  && ic.ItemTags.Test_AnySet(_meleeTags))  return WeaponMode.Melee;
+
+            // 4) auto のみ：型フォールバック（工具＝dynamic melee も近接に含む）
+            if (Cfg.WeaponClassifyMode != "strict")
+            {
+                var a = (ic.Actions != null && ic.Actions.Length > 0) ? ic.Actions[0] : null;
+                if (a is ItemActionRanged) return WeaponMode.Ranged;
+                if (a is ItemActionMelee || a is ItemActionDynamicMelee) return WeaponMode.Melee;
+            }
+            return WeaponMode.None;
+        }
+
+        private static HashSet<string> ParseNames(string csv)
+        {
+            var set = Empty();
+            if (!string.IsNullOrEmpty(csv))
+            {
+                foreach (var s in csv.Split(','))
+                {
+                    var t = s.Trim();
+                    if (t.Length > 0) set.Add(t);
+                }
+            }
+            return set;
+        }
+
+        private static FastTags<TagGroup.Global> ParseTags(string csv, out bool has)
+        {
+            string c = csv != null ? csv.Trim() : "";
+            has = c.Length > 0;
+            return has ? FastTags<TagGroup.Global>.Parse(c) : default;
+        }
+    }
+
     // --- (A) 武器自動切替 -----------------------------------------------------
     //   ツールベルトの「最初の銃スロット / 最初の近接スロット」をキャッシュし、
     //   脅威距離に応じてヒステリシスで持ち替える。持ち替えは NetPackageHoldingItem 経由で
@@ -848,22 +963,21 @@ namespace CompanionAIVerify
         private static float _nextSwitchTime;
         private static WeaponMode _wantMode = WeaponMode.None;
 
-        // 保持中アイテムのモード（銃/近接/その他）。素手・工具・ブロックは None。
+        // 保持中アイテムのモード。分類器で判定（松明等の除外・工具の包含が反映される）。
         internal static WeaponMode CurrentHeldMode(EntityPlayerLocal self)
         {
             var inv = self.inventory;
             var hi  = inv != null ? inv.holdingItem : null;
-            var a   = (hi != null && hi.Actions != null && hi.Actions.Length > 0) ? hi.Actions[0] : null;
-            if (a is ItemActionRanged) return WeaponMode.Ranged;
-            if (a is ItemActionMelee || a is ItemActionDynamicMelee) return WeaponMode.Melee;
-            return WeaponMode.None;
+            return WeaponClassifier.Classify(hi);
         }
 
-        // ツールベルト走査（throttled）。最初の銃/近接スロットを記録。
+        // ツールベルト走査（throttled）。分類器で最初の銃/近接スロットを記録。
         internal static void RefreshLoadout(EntityPlayerLocal self, bool force)
         {
             if (!force && Time.time < _nextScan) return;
             _nextScan = Time.time + Cfg.LoadoutScanIntervalSec;
+
+            if (force) WeaponClassifier.Rebuild(); // config 反映（F8）はここで拾う。以外は Classify が遅延構築
 
             _rangedSlot = -1;
             _meleeSlot  = -1;
@@ -875,11 +989,11 @@ namespace CompanionAIVerify
             {
                 ItemStack st = inv.GetItem(i);
                 if (st == null || st.IsEmpty()) continue;
-                ItemClass ic = st.itemValue.ItemClass;
-                if (ic == null || ic.Actions == null || ic.Actions.Length == 0) continue;
-                var a = ic.Actions[0];
-                if (_rangedSlot < 0 && a is ItemActionRanged) _rangedSlot = i;
-                else if (_meleeSlot < 0 && (a is ItemActionMelee || a is ItemActionDynamicMelee)) _meleeSlot = i;
+                switch (WeaponClassifier.Classify(st.itemValue.ItemClass))
+                {
+                    case WeaponMode.Ranged: if (_rangedSlot < 0) _rangedSlot = i; break;
+                    case WeaponMode.Melee:  if (_meleeSlot  < 0) _meleeSlot  = i; break;
+                }
             }
         }
 
@@ -892,14 +1006,14 @@ namespace CompanionAIVerify
 
             bool haveR = _rangedSlot >= 0;
             bool haveM = _meleeSlot  >= 0;
-            if (!haveR && !haveM) return false; // 素手のみ → 既存 melee 経路へ委譲
+            if (!haveR && !haveM) return false; // 武器なし → 既存 melee 経路へ委譲
 
             WeaponMode want;
             if (haveR && haveM)
             {
                 if (d <= Cfg.SwitchToMeleeMeters)       want = WeaponMode.Melee;
                 else if (d >= Cfg.SwitchToRangedMeters) want = WeaponMode.Ranged;
-                else // デッドバンド：現状維持。未確定なら中点で決める。
+                else
                     want = (_wantMode != WeaponMode.None)
                         ? _wantMode
                         : (d <= (Cfg.SwitchToMeleeMeters + Cfg.SwitchToRangedMeters) * 0.5f
@@ -907,21 +1021,20 @@ namespace CompanionAIVerify
             }
             else
             {
-                want = haveR ? WeaponMode.Ranged : WeaponMode.Melee; // 片方のみ → それを使う（安全側）
+                want = haveR ? WeaponMode.Ranged : WeaponMode.Melee;
             }
             _wantMode = want;
 
-            if (CurrentHeldMode(self) == want) return false; // 既に希望モード
+            if (CurrentHeldMode(self) == want) return false;
 
             int slot = (want == WeaponMode.Ranged) ? _rangedSlot : _meleeSlot;
             if (slot < 0 || slot == inv.holdingItemIdx) return false;
             if (Time.time < _nextSwitchTime) return false;
             _nextSwitchTime = Time.time + Cfg.WeaponSwitchMinIntervalSec;
 
-            // 旧武器の press を掃除してから持ち替え（ダングリング press / ADS 残り防止）
             CombatDriver.ReleaseIfPressed(self);
             CombatDriver.ReleaseFireIfPressed(self);
-            inv.SetHoldingItemIdxNoHolsterTime(slot); // ホルスター遅延なし。ShowHeldItem 経由でサーバ同期
+            inv.SetHoldingItemIdxNoHolsterTime(slot);
 
             Log.Out(string.Format(
                 "[CompanionAI] weapon-switch: -> {0} slot={1} d={2:0.0}m (R={3} M={4})",
@@ -934,6 +1047,9 @@ namespace CompanionAIVerify
     //   bag を走査し、武器(銃/近接)をツールベルトへ移送。throttled。
     //   注意: dynamic melee は斧・つるはし等の「工具」も含む。武器/工具の厳密区別は
     //   ItemTags 精査を要する follow-up（現状は Actions[0] 型分類で近似）。
+    // v0.7.1
+    //   分類器が Melee/Ranged と判定したものだけ昇格。松明は除外リストで落ちる。
+    //   ※ ツールベルト満杯時の空け（退避）は未実装（ユーザー了承済み・後日）。
     internal static class ItemStower
     {
         private static float _nextRun;
@@ -952,7 +1068,7 @@ namespace CompanionAIVerify
             Inventory inv = self.inventory;
             if (bag == null || inv == null) return;
 
-            ItemStack[] bslots = bag.GetSlots(); // 生配列。SetSlot で直接更新される
+            ItemStack[] bslots = bag.GetSlots();
             if (bslots == null) return;
 
             int moved = 0;
@@ -961,9 +1077,8 @@ namespace CompanionAIVerify
                 ItemStack st = bslots[i];
                 if (st == null || st.IsEmpty()) continue;
                 if (!IsWeaponStack(st)) continue;
-                if (!inv.CanTakeItem(st)) continue; // ツールベルトに空き無し → skip
+                if (!inv.CanTakeItem(st)) continue; // ツールベルト空き無し（退避は後日）
 
-                // AddItem は itemValue を Clone して配置。成功したら bag 側を空に。
                 if (inv.AddItem(st.Clone(), out int slot) && slot >= 0)
                 {
                     bag.SetSlot(i, ItemStack.Empty, true);
@@ -979,13 +1094,7 @@ namespace CompanionAIVerify
 
         internal static bool IsWeaponStack(ItemStack st)
         {
-            ItemClass ic = st.itemValue.ItemClass;
-            if (ic == null || ic.Actions == null || ic.Actions.Length == 0) return false;
-            var a = ic.Actions[0];
-            if (a is ItemActionRanged) return true;
-            if (a is ItemActionMelee)  return true;
-            if (Cfg.StowDynamicMelee && a is ItemActionDynamicMelee) return true;
-            return false;
+            return WeaponClassifier.Classify(st.itemValue.ItemClass) != WeaponMode.None;
         }
 
         private static string DescribeStack(ItemStack st)
