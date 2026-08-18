@@ -3,10 +3,11 @@ using HarmonyLib;
 using UnityEngine;
 
 // =============================================================================
-// Companion AI verify harness — Build v0.5.4 (旧 v0.8 + 設定ファイル外部化)
+// Companion AI verify harness — Build v0.6.0 (hit検証+シュータブル・ゲート / フルオート連射)
 //   採番方針: 交戦(engage)スライス系列は v0.5.x。tuning/診断/tooling は patch(.1,.2,.3,.4)、
 //   新capability(engage-maneuver/navigation 等)が入る時のみ minor を上げる。
-//   v0.5.4: 調整値を companion_config.txt に外部化（起動時＆F8で再読込）。挙動は v0.5.3 と同一。
+//   v0.6.0: 発砲前に Voxel.Raycast で射線検証（遮蔽/FF/狙点外しを撃たずホールド, 候補狙点探索）
+//          ＋ フルオート武器(GetBurstCount==0)を press 保持で RPM 連射。
 // -----------------------------------------------------------------------------
 // Companion AI — locomotion + facing + threat-sensing + ENGAGE(melee+ranged)
 // (7DTD 3.1.0)
@@ -122,7 +123,7 @@ namespace CompanionAIVerify
             var harmony = new Harmony("companionai.verify");
             harmony.PatchAll();
             ModCfgFile.Init(_modInstance);   // companion_config.txt を読込（無ければ生成）
-            Log.Out("[CompanionAI] verify harness v0.5.4 loaded (follow + facing + threat-scan + engage[melee+ranged/parallax/ADS] + file-config). F8 to toggle drive / reload config.");
+            Log.Out("[CompanionAI] verify harness v0.6.0 loaded (engage[melee+ranged/parallax/ADS/shootable-gate/full-auto] + file-config). F8 to toggle drive / reload config.");
         }
     }
 
@@ -163,6 +164,16 @@ namespace CompanionAIVerify
         // --- ADS（サイトを覗く射撃, ver0.8） ---
         //   AimingGun=true で拡散が hip(1.0)→aiming(0.1) と10倍縮む(ItemActionRanged:1346, 748)。
         internal static bool    AimDownSightsOnEngage = true;
+
+        // --- hit検証＋シュータブル・ゲート（v0.6.0） ---
+        //   発砲前に自前 Voxel.Raycast で「射線が対象コライダーに届くか」を検証。
+        //   候補狙点(頭/胴中心/腹)を順に試し、対象に当たる点だけ採用。全滅なら撃たずホールド。
+        //   遮蔽(block)・FF(別entity)・空(sky) を理由としてログ化。
+        internal static bool    RequireShootable     = true;
+
+        // --- フルオート連射（v0.6.0） ---
+        //   GetBurstCount==0 の武器はトリガー押しっぱなしで RPM 連射（false で全銃 FireInterval 単発）。
+        internal static bool    FullAutoHold         = true;
     }
 
     // --- 外部設定ファイル (companion_config.txt) -------------------------------
@@ -247,6 +258,8 @@ namespace CompanionAIVerify
                 case "SnapCameraOnFire":      return TryBool(val, ref Cfg.SnapCameraOnFire);
                 case "AimFromCameraOrigin":   return TryBool(val, ref Cfg.AimFromCameraOrigin);
                 case "AimDownSightsOnEngage": return TryBool(val, ref Cfg.AimDownSightsOnEngage);
+                case "RequireShootable":      return TryBool(val, ref Cfg.RequireShootable);
+                case "FullAutoHold":          return TryBool(val, ref Cfg.FullAutoHold);
                 case "StandoffMeters":        return TryF(val, ref Cfg.StandoffMeters);
                 case "RunMeters":             return TryF(val, ref Cfg.RunMeters);
                 case "ThreatScanRadius":      return TryF(val, ref Cfg.ThreatScanRadius);
@@ -280,7 +293,7 @@ namespace CompanionAIVerify
         private static string DefaultText()
         {
             return
-"# CompanionAI verify harness config (v0.5.4)\n" +
+"# CompanionAI verify harness config (v0.6.0)\n" +
 "# 変更後、ゲーム内で F8（ドライブ切替）を押すと再読込されます。起動時にも読込。\n" +
 "# bool = true/false (1/0/on/off も可) , float = 小数点は '.'（例 3.0）\n" +
 "\n" +
@@ -310,7 +323,11 @@ namespace CompanionAIVerify
 "ForceFirstPerson      = false\n" +
 "SnapCameraOnFire      = true\n" +
 "AimFromCameraOrigin   = true\n" +
-"AimDownSightsOnEngage = true\n";
+"AimDownSightsOnEngage = true\n" +
+"\n" +
+"# --- hit検証ゲート / フルオート（v0.6.0）---\n" +
+"RequireShootable      = true\n" +
+"FullAutoHold          = true\n";
         }
     }
 
@@ -425,6 +442,10 @@ namespace CompanionAIVerify
         private static float _nextFireTime;
         private static int   _lastMeta = int.MinValue;
         private static bool  _adsOn;              // ADS(サイト覗き)状態。変化時のみトグル
+        private static float _nextHoldLogTime;    // ホールド理由ログの throttle
+        // シュータブル候補狙点の再利用バッファ（毎フレーム alloc 回避）
+        private static readonly Vector3[] _candPts = new Vector3[3];
+        private static readonly string[]  _candNm  = new string[3];
 
         // 交戦オーバーレイ。posture 決定の後に最後に呼ぶ（in-range 時の 3D エイムが
         // 平面 facing を同フレーム内で上書きするため）。
@@ -506,15 +527,16 @@ namespace CompanionAIVerify
             var hi  = inv != null ? inv.holdingItem : null;
             var hid = inv != null ? inv.holdingItemData : null;
             return hi != null && hi.Actions != null && hi.Actions.Length >= 2 && hi.Actions[1] != null
-                && hid != null && hid.actionData != null && hid.actionData.Count >= 2; // hid.actionData には Length がない・Count を使う
+                && hid != null && hid.actionData != null && hid.actionData.Count >= 2;
         }
 
-        // ★ 発砲ドライバ。press(フレームN)→release(フレームN+1) を FireInterval ごとに回す。
-        //   セミオートは press の立ち上がりで1発。オート/バーストも1発ずつの安全ケイデンスに揃う。
-        //   弾切れ→自動リロードはゲート任せ。実発砲は Meta 差で検出。
+        // ★ 発砲ドライバ（v0.6.0）: hit検証＋シュータブル・ゲート＋フルオート連射。
+        //   1) 射線が対象コライダーに届く狙点を探す（ResolveShootableAim）。届かなければホールド。
+        //   2) 届く狙点へカメラをスナップ（視差/ラグ解消）＋ADS。
+        //   3) フルオート(GetBurstCount==0)は press 保持で RPM 連射、セミ/バーストは press/release 単発。
         private static void RangedStep(EntityPlayerLocal self, in ThreatInfo threat, float d)
         {
-            if (!Cfg.EnableRangedFire) // 従来どおり撃たずにログのみ
+            if (!Cfg.EnableRangedFire)
             {
                 ReleaseFireIfPressed(self);
                 if (d <= Cfg.RangedMaxEngageMeters && Time.time >= _nextEngageLogTime)
@@ -528,94 +550,163 @@ namespace CompanionAIVerify
 
             if (d > Cfg.RangedMaxEngageMeters) { ReleaseFireIfPressed(self); return; }
 
-            // ★ ハイブリッド狙点解決（ver0.5）
-            //   頭ボーンは低姿勢で当たり判定を外すため、headLift でゲート。
             EntityAlive tgt = threat.Target;
             float headLift = tgt.getHeadPosition().y - tgt.position.y;
-            bool  useHead  = headLift >= Cfg.HeadAimMinLift;
-            Vector3 aimPoint = useHead
-                ? tgt.getHeadPosition()                            // 立ち姿勢: 頭（ヘッドショット維持）
-                : tgt.position + Vector3.up * tgt.scaledExtent.y;  // 低姿勢: AABB縦中心（姿勢非依存）
-            string aimMode = useHead ? "head" : "center";
-            float  aimLift = aimPoint.y - tgt.position.y;
 
-            // 意図方向（頭の位置から狙点へ）：body/視覚トラッキング用（見た目の照準）。
-            Vector3 bodyDir = (aimPoint - self.getHeadPosition());
-            SetAimRotation(self, bodyDir);
+            // カメラ実ワールド位置（=弾の原点）。視差補正の基準。
+            Vector3 camWorld = (Cfg.AimFromCameraOrigin && self.playerCamera != null)
+                ? self.playerCamera.transform.position + Origin.position
+                : self.getHeadPosition();
 
-            // release フェーズ優先：前フレームで press 済みなら今フレームは離す
-            if (_firePressed)
+            // ★ (1) 射線が対象に届く狙点を探す
+            Vector3 aimPoint;
+            string  aimMode, bodyPart, reason;
+            bool shootable;
+            if (Cfg.RequireShootable)
             {
-                self.Attack(true);
-                _firePressed = false;
+                shootable = ResolveShootableAim(self, tgt, camWorld, headLift,
+                                                out aimPoint, out aimMode, out bodyPart, out reason);
+            }
+            else
+            {
+                // ゲート無効時は従来のハイブリッド狙点をそのまま採用（検証なし）
+                bool useHead = headLift >= Cfg.HeadAimMinLift;
+                aimPoint = useHead ? tgt.getHeadPosition() : tgt.position + Vector3.up * tgt.scaledExtent.y;
+                aimMode  = useHead ? "head" : "center";
+                bodyPart = "-"; reason = "ok"; shootable = true;
+            }
+
+            // body/視覚トラッキング（見た目の照準）はホールド中も維持
+            SetAimRotation(self, aimPoint - self.getHeadPosition());
+
+            if (!shootable) // ★ 撃たない：遮蔽/FF/空。理由をログしてホールド
+            {
+                ReleaseFireIfPressed(self);
+                if (Time.time >= _nextHoldLogTime)
+                {
+                    _nextHoldLogTime = Time.time + Cfg.LogThrottleSec;
+                    Log.Out(string.Format(
+                        "[CompanionAI] hold: {0} id={1} d={2:0.0}m reason={3}",
+                        threat.Kind, tgt.entityId, d, reason));
+                }
                 return;
             }
 
-            // press フェーズ：ケイデンス到来時のみ
-            if (Time.time < _nextFireTime) return;
-
-            // ★ ver0.7 視差補正 + v0.5.3 A/Bトグル: 弾は GetLookRay()=カメラ位置から出る。
-            //   狙い原点を カメラ実位置(補正あり) / 頭ボーン(補正なし) で切替可能にする。
-            //   camera.transform は origin 相対、Entity.position はワールド(Entity:938)。
-            Vector3 shotOrigin = (Cfg.AimFromCameraOrigin && self.playerCamera != null)
-                ? self.playerCamera.transform.position + Origin.position
-                : self.getHeadPosition();
-            Vector3 shotDir = aimPoint - shotOrigin;
-
-            // ★ ver0.8 ADS: 発砲前にサイトを覗く（拡散を10倍絞る）。secondary action 持ちのみ。
+            // ★ (2) 発砲準備：ADS＋カメラを狙点へスナップ
+            Vector3 shotDir = aimPoint - camWorld;
             SetAds(self, true);
-
-            // 発砲直前にカメラ transform を狙点へ即時スナップ（配達ラグ＋視差を同時に解消）
             if (Cfg.SnapCameraOnFire && self.playerCamera != null && shotDir.sqrMagnitude > 1e-6f)
             {
                 self.playerCamera.transform.rotation =
                     Quaternion.LookRotation(shotDir.normalized, Vector3.up);
             }
 
-            int before = GetHoldingMeta(self);
-            self.Attack(false);                 // press = 発火(セミ)/開始(オート)
-            _firePressed = true;                // 次フレームで必ず release（内部ゲートに関わらず整定）
-            _nextFireTime = Time.time + Cfg.RangedFireIntervalSec;
+            // ★ (3) フルオート判定して駆動
+            bool fullAuto = Cfg.FullAutoHold && IsFullAuto(self);
 
-            int after = GetHoldingMeta(self);
-            if (after >= 0 && before >= 0)
+            if (fullAuto)
             {
-                if (after < before) // 実際に1発消費された＝発砲成立
-                {
-                    // ★ 計測: intended(threat.Target) と actual(MinEventContext.Other) を突き合わせ。
-                    Entity hitE = self.MinEventContext != null ? self.MinEventContext.Other : null;
-                    string hitDesc;
-                    if (hitE == null)                              hitDesc = "none(block/miss)";
-                    else if (hitE.entityId == tgt.entityId)        hitDesc = "TARGET";
-                    else                                           hitDesc = "OTHER id=" + hitE.entityId;
-
-                    // ★ ver0.7 診断: 実際の射撃レイ(GetLookRay, ワールド)が狙点をどれだけ外したか。
-                    //   missDist = レイ直線と aimPoint の最短距離。視差が主因なら至近で大 → 修正で≈0。
-                    //   missDist≈0 でも none なら、当たり判定/自己遮蔽/地形が原因(次段の切り分け材料)。
-                    Ray lr = self.GetLookRay();
-                    Vector3 rd = lr.direction.normalized;
-                    float tproj = Vector3.Dot(aimPoint - lr.origin, rd);
-                    Vector3 closest = lr.origin + rd * tproj;
-                    float missDist = Vector3.Distance(closest, aimPoint);
-                    float errDeg  = Vector3.Angle(rd, shotDir.normalized);
-                    float pWant   = Mathf.Asin(Mathf.Clamp(shotDir.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
-                    float pActual = Mathf.Asin(Mathf.Clamp(rd.y,                  -1f, 1f)) * Mathf.Rad2Deg;
-
-                    Log.Out(string.Format(
-                        "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} headLift={4:0.00}m aim={5}({6:0.00}m) missDist={7:0.00}m errDeg={8:0.0} pWant={9:0.0} pAct={10:0.0} ads={11} -> hit={12}",
-                        threat.Kind, tgt.entityId, d, after, headLift, aimMode, aimLift, missDist, errDeg, pWant, pActual, (self.AimingGun ? "on" : "off"), hitDesc));
-                }
-                else if (after == 0) // 空＝リロード待ち（ゲートが自動要求）
-                {
-                    if (_lastMeta != 0)
-                        Log.Out("[CompanionAI] fire: empty — waiting for auto-reload.");
-                }
-                else if (_lastMeta >= 0 && after > _lastMeta) // Meta 増加＝リロード完了
-                {
-                    Log.Out(string.Format("[CompanionAI] reload: done, mag={0}", after));
-                }
-                _lastMeta = after;
+                // トリガー保持：毎フレーム press（RPM はゲートの Delay が律速）。離しは disengage 時のみ。
+                int before = GetHoldingMeta(self);
+                self.Attack(false);
+                _firePressed = true;
+                FireLog(self, threat, d, aimMode, bodyPart, true, GetHoldingMeta(self), before);
             }
+            else
+            {
+                // セミ/バースト：press(N)→release(N+1) を FireInterval ごと
+                if (_firePressed) { self.Attack(true); _firePressed = false; return; }
+                if (Time.time < _nextFireTime) return;
+                int before = GetHoldingMeta(self);
+                self.Attack(false);
+                _firePressed = true;
+                _nextFireTime = Time.time + Cfg.RangedFireIntervalSec;
+                FireLog(self, threat, d, aimMode, bodyPart, false, GetHoldingMeta(self), before);
+            }
+        }
+
+        // 発砲/リロードのログ。Meta 差で実発砲を検出し、命中エンティティ(MinEventContext.Other)を突合。
+        private static void FireLog(EntityPlayerLocal self, in ThreatInfo threat, float d,
+                                    string aimMode, string bodyPart, bool fullAuto, int after, int before)
+        {
+            if (after < 0 || before < 0) return;
+            if (after < before) // 実発砲
+            {
+                Entity hitE = self.MinEventContext != null ? self.MinEventContext.Other : null;
+                string hitDesc = (hitE == null) ? "none"
+                    : (hitE.entityId == threat.Target.entityId ? "TARGET" : "OTHER id=" + hitE.entityId);
+                Log.Out(string.Format(
+                    "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} aim={4}({5}) auto={6} ads={7} -> hit={8}",
+                    threat.Kind, threat.Target.entityId, d, after, aimMode, bodyPart,
+                    fullAuto ? "on" : "off", (self.AimingGun ? "on" : "off"), hitDesc));
+            }
+            else if (after == 0) { if (_lastMeta != 0) Log.Out("[CompanionAI] fire: empty — waiting for auto-reload."); }
+            else if (_lastMeta >= 0 && after > _lastMeta) Log.Out(string.Format("[CompanionAI] reload: done, mag={0}", after));
+            _lastMeta = after;
+        }
+
+        // ★ シュータブル解決: 候補狙点(頭/胴中心/腹)を順に自前レイキャストし、
+        //   対象コライダーに実際に当たる最初の点を返す。全滅なら理由(block/OTHER/sky)付きで false。
+        //   fireShot と同じ SetModelLayer(2)＋Voxel.Raycast(world,ray,range,-538751005,8,0) を使用。
+        private static bool ResolveShootableAim(EntityPlayerLocal self, EntityAlive tgt, Vector3 camWorld,
+                                                float headLift, out Vector3 aimPoint, out string mode,
+                                                out string part, out string reason)
+        {
+            aimPoint = tgt.position; mode = "none"; part = "-"; reason = "sky";
+
+            Vector3 head   = tgt.getHeadPosition();
+            Vector3 center = tgt.position + Vector3.up * tgt.scaledExtent.y;
+            Vector3 belly  = tgt.getBellyPosition();
+            if (headLift >= Cfg.HeadAimMinLift) { _candPts[0] = head;   _candNm[0] = "head";   _candPts[1] = center; _candNm[1] = "center"; }
+            else                                { _candPts[0] = center; _candNm[0] = "center"; _candPts[1] = head;   _candNm[1] = "head";   }
+            _candPts[2] = belly; _candNm[2] = "belly";
+
+            World world = self.world;
+            bool haveReason = false;
+            int ml = self.GetModelLayer();
+            self.SetModelLayer(2); // 自己を射線から除外（fireShot と同じ）
+            try
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    Vector3 dir = _candPts[i] - camWorld;
+                    if (dir.sqrMagnitude < 1e-6f) continue;
+                    float range = dir.magnitude + 1.0f;
+                    if (!Voxel.Raycast(world, new Ray(camWorld, dir.normalized), range, -538751005, 8, 0f))
+                    {
+                        if (!haveReason) { haveReason = true; reason = "sky"; }
+                        continue;
+                    }
+                    WorldRayHitInfo info = Voxel.voxelRayHitInfo.Clone();
+                    Entity e = ItemActionAttack.FindHitEntityNoTagCheck(info, out string bp);
+                    if (e != null && e.entityId == tgt.entityId)
+                    {
+                        aimPoint = _candPts[i]; mode = _candNm[i]; part = string.IsNullOrEmpty(bp) ? "body" : bp; reason = "ok";
+                        return true;
+                    }
+                    if (!haveReason)
+                    {
+                        haveReason = true;
+                        if (e != null) reason = "OTHER id=" + e.entityId;
+                        else reason = "block:" + (string.IsNullOrEmpty(info.tag)
+                            ? (info.transform != null ? info.transform.name : "?") : info.tag);
+                    }
+                }
+            }
+            finally { self.SetModelLayer(ml); }
+            return false;
+        }
+
+        // フルオート判定: GetBurstCount==0（BurstRoundCount 既定1=セミ, 0=フル, N=バースト）。
+        private static bool IsFullAuto(EntityPlayerLocal self)
+        {
+            var inv = self.inventory;
+            var hi  = inv != null ? inv.holdingItem : null;
+            var hid = inv != null ? inv.holdingItemData : null;
+            if (hi == null || hi.Actions == null || hi.Actions.Length == 0) return false;
+            var ra = hi.Actions[0] as ItemActionRanged;
+            if (ra == null || hid == null || hid.actionData == null || hid.actionData.Count == 0) return false;
+            return ra.GetBurstCount(hid.actionData[0]) == 0;
         }
 
         // 保持中アイテムの装填残弾(Meta)。取得不可は -1。 (A4: holdingItemItemValue.Meta)
