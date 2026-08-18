@@ -46,6 +46,15 @@ using UnityEngine;
 //   fire ログに aim=head/center と aimLift を追加し、低headLift の弾が
 //   none→TARGET に転じるかをテストで直接集計できるようにする（しきい値は要調整）。
 //
+// ── ver0.6 追加(診断+修正候補): カメラ配達ラグ ──
+//   観察: body(見た目)は標的を向くのに弾が上へ抜ける／シングルなら当たる。
+//   原因仮説: 弾は GetLookRay()=playerCamera.transform 由来だが、SetRotation は
+//     カメラを m_vp_FPCamera.Angle 経由で遅延反映(vp_FPCamera更新はLateUpdate付近)。
+//     同フレーム発砲では前フレームのカメラ向きで撃つ→急ピッチの低標的で上に外す。
+//   診断: fire ログに errDeg(実レイ GetLookRay vs 意図方向) と pWant/pAct(ピッチ) を追加。
+//   修正候補(トグル SnapCameraOnFire): 発砲直前に playerCamera.transform を狙点へ即時スナップ。
+//     false=ベースライン(errDeg 大を確認) / true=errDeg≈0 と命中改善を確認（同一セッションA/B）。
+//
 // ★ bFirstPersonView が「実行時に決まる」ことの接地（監査より重要）:
 //   spawn/respawn 時 AfterPlayerRespawn(EPL:3715) → AttachedToEntity==null なら
 //   SwitchToPreferredCameraMode(EPL:3645) が走る。そこで
@@ -123,6 +132,13 @@ namespace CompanionAIVerify
         //   ログ実測: 命中は headLift≈1.5-2.0、非命中は≈0-0.7 で分離。
         //   頭が十分高い時のみ頭を狙い、低姿勢(四足/突進/のけぞり)は AABB 縦中心へ落とす。
         internal const  float   HeadAimMinLift       = 1.2f;       // これ以上なら頭狙い、未満は胴中心。要調整
+
+        // --- カメラ配達ラグ対策（ver0.6） ---
+        //   弾は GetLookRay()=playerCamera.transform 由来。SetRotation はカメラを Angle 経由で
+        //   遅延反映するため、同フレーム発砲では前フレームのカメラ向きで撃ってしまう。
+        //   ON にすると発砲直前に playerCamera.transform を狙点へ即時スナップしてラグを消す。
+        //   まず false でベースライン(errDeg 大)を確認 → true で errDeg≈0 と命中改善を確認(A/B)。
+        internal static bool    SnapCameraOnFire     = true;
     }
 
     // --- Threat sensing ------------------------------------------------------
@@ -326,7 +342,9 @@ namespace CompanionAIVerify
             string aimMode = useHead ? "head" : "center";
             float  aimLift = aimPoint.y - tgt.position.y;
 
-            FaceAimPoint(self, aimPoint);
+            // 意図方向（頭の位置から狙点へ）。SetRotation はこの向きで body/camera Angle を更新。
+            Vector3 aimDir = (aimPoint - self.getHeadPosition());
+            SetAimRotation(self, aimDir);
 
             // release フェーズ優先：前フレームで press 済みなら今フレームは離す
             if (_firePressed)
@@ -339,6 +357,13 @@ namespace CompanionAIVerify
             // press フェーズ：ケイデンス到来時のみ
             if (Time.time < _nextFireTime) return;
 
+            // ★ ver0.6: 発砲直前にカメラ transform を狙点へ即時スナップ（配達ラグ対策, トグル）
+            if (Cfg.SnapCameraOnFire && self.playerCamera != null && aimDir.sqrMagnitude > 1e-6f)
+            {
+                self.playerCamera.transform.rotation =
+                    Quaternion.LookRotation(aimDir.normalized, Vector3.up);
+            }
+
             int before = GetHoldingMeta(self);
             self.Attack(false);                 // press = 発火(セミ)/開始(オート)
             _firePressed = true;                // 次フレームで必ず release（内部ゲートに関わらず整定）
@@ -350,17 +375,23 @@ namespace CompanionAIVerify
                 if (after < before) // 実際に1発消費された＝発砲成立
                 {
                     // ★ 計測: intended(threat.Target) と actual(MinEventContext.Other) を突き合わせ。
-                    //   併せて どちらの狙点を使ったか(aim=head/center) を記録し、
-                    //   低headLift で center に切替えた弾が none→TARGET に変わったか集計可能にする。
                     Entity hitE = self.MinEventContext != null ? self.MinEventContext.Other : null;
                     string hitDesc;
                     if (hitE == null)                              hitDesc = "none(block/miss)";
                     else if (hitE.entityId == tgt.entityId)        hitDesc = "TARGET";
                     else                                           hitDesc = "OTHER id=" + hitE.entityId;
 
+                    // ★ ver0.6 診断: 実際の射撃レイ(GetLookRay) と 意図方向 の角度差＋ピッチ。
+                    //   errDeg が低headLiftで大 → カメラ配達ラグ確定。SnapCameraOnFire=true で縮むはず。
+                    Vector3 actualDir = self.GetLookRay().direction.normalized;
+                    Vector3 wantDir   = aimDir.normalized;
+                    float errDeg   = Vector3.Angle(actualDir, wantDir);
+                    float pWant    = Mathf.Asin(Mathf.Clamp(wantDir.y,   -1f, 1f)) * Mathf.Rad2Deg;
+                    float pActual  = Mathf.Asin(Mathf.Clamp(actualDir.y, -1f, 1f)) * Mathf.Rad2Deg;
+
                     Log.Out(string.Format(
-                        "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} headLift={4:0.00}m aim={5}({6:0.00}m) -> hit={7}",
-                        threat.Kind, tgt.entityId, d, after, headLift, aimMode, aimLift, hitDesc));
+                        "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} headLift={4:0.00}m aim={5}({6:0.00}m) errDeg={7:0.0} pWant={8:0.0} pAct={9:0.0} -> hit={10}",
+                        threat.Kind, tgt.entityId, d, after, headLift, aimMode, aimLift, errDeg, pWant, pActual, hitDesc));
                 }
                 else if (after == 0) // 空＝リロード待ち（ゲートが自動要求）
                 {
@@ -383,15 +414,13 @@ namespace CompanionAIVerify
             return iv != null ? iv.Meta : -1;
         }
 
-        // 任意の狙点へエイム。ranged ショットは GetLookRay(camera) 由来なので
-        // SetRotation でカメラを向ければ着弾する（ItemActionRanged:1579, EPL:2310）。
-        private static void FaceAimPoint(EntityPlayerLocal self, Vector3 aimPoint)
+        // 意図方向(aimDir)で body/camera を向ける。ranged ショットは GetLookRay(camera) 由来なので
+        // SetRotation がカメラ Angle を更新する（ItemActionRanged:1579, EPL:2310）。
+        // ただしカメラ transform 反映は遅延するため、ラグ対策は RangedStep 側で別途スナップする。
+        private static void SetAimRotation(EntityPlayerLocal self, Vector3 aimDir)
         {
-            Vector3 eye = self.getHeadPosition();
-            Vector3 dir = aimPoint - eye;
-            if (dir.sqrMagnitude < 1e-6f) return;
-
-            Vector3 euler = Quaternion.LookRotation(dir.normalized, Vector3.up).eulerAngles;
+            if (aimDir.sqrMagnitude < 1e-6f) return;
+            Vector3 euler = Quaternion.LookRotation(aimDir.normalized, Vector3.up).eulerAngles;
             euler.x *= -1f; // ピッチ反転（EPL:239, 251）
             self.SetRotation(euler);
         }
