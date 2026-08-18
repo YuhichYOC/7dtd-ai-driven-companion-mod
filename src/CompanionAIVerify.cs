@@ -32,6 +32,16 @@ using UnityEngine;
 //   両端の頭で dir = target.getHeadPosition() - self.getHeadPosition() が最精度。
 //   （近接は SphereRadius 許容があるので従来どおり胴狙い +0.9m のまま）
 //
+// ── ver0.4.1 追加(計測): fire ログに intended vs actual-hit を記録 ──
+//   狙ったターゲット(intended) = threat.Target（我々の選択）。
+//   実際に当てたもの(actual)   = self.MinEventContext.Other（fireShot がゲート内で設定,
+//     命中エンティティ / 非命中は null。ItemActionRanged:1194 null化, 1462 格納）。
+//   → hit=TARGET / OTHER id=N(FF疑い) / none(block/miss) を判別。
+//   併せて headLift = target.getHeadPosition().y - target.position.y を出力し、
+//   スパイダー等「頭が異常に低い」体格を定量化する（狙点ずれ診断の材料）。
+//   命中部位(頭/脚)まで要る場合は ItemActionAttack.FindHitEntityNoTagCheck(out bodyPartName)
+//   (988) を自前レイキャストで併用する余地あり（本版では entity レベルまで）。
+//
 // ★ bFirstPersonView が「実行時に決まる」ことの接地（監査より重要）:
 //   spawn/respawn 時 AfterPlayerRespawn(EPL:3715) → AttachedToEntity==null なら
 //   SwitchToPreferredCameraMode(EPL:3645) が走る。そこで
@@ -320,9 +330,22 @@ namespace CompanionAIVerify
             {
                 if (after < before) // 実際に1発消費された＝発砲成立
                 {
+                    // ★ 計測: 狙ったターゲット(intended) と 実際に当てたもの(actual) を突き合わせる。
+                    //   actual は EntityZombie フィールドでなく、ゲートが fireShot で設定した
+                    //   self.MinEventContext.Other（命中エンティティ / 非命中は null）から読む。
+                    //   (ItemActionRanged:1194 で null 化, 1462 で命中時に格納)
+                    Entity hitE = self.MinEventContext != null ? self.MinEventContext.Other : null;
+                    string hitDesc;
+                    if (hitE == null)                              hitDesc = "none(block/miss)";
+                    else if (hitE.entityId == threat.Target.entityId) hitDesc = "TARGET";
+                    else                                           hitDesc = "OTHER id=" + hitE.entityId;
+
+                    // 狙点(頭)が足元からどれだけ高いか＝スパイダー等の「頭が異常に低い」を定量化。
+                    float headLift = threat.Target.getHeadPosition().y - threat.Target.position.y;
+
                     Log.Out(string.Format(
-                        "[CompanionAI] fire: {0} {1} d={2:0.0}m mag={3}",
-                        threat.Kind, threat.State, d, after));
+                        "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} headLift={4:0.00}m -> hit={5}",
+                        threat.Kind, threat.Target.entityId, d, after, headLift, hitDesc));
                 }
                 else if (after == 0) // 空＝リロード待ち（ゲートが自動要求）
                 {
