@@ -3,6 +3,11 @@ using HarmonyLib;
 using UnityEngine;
 
 // =============================================================================
+// Companion AI verify harness — Build v0.7.0
+//   (A) 交戦距離に応じた武器自動切替（近接⇄銃）  … 新 engage capability
+//   (B) 武器のツールベルト優先配置                … 非ホットパス・ユーティリティ
+//   (C) リーダー落下物の自動拾得                  … 非ホットパス・ユーティリティ（検証込み）
+//
 // Companion AI verify harness — Build v0.6.1 (hit検証+シュータブル・ゲート / フルオート連射+空リロード修正)
 //   採番方針: 交戦(engage)スライス系列は v0.5.x。tuning/診断/tooling は patch(.1,.2,.3,.4)、
 //   新capability(engage-maneuver/navigation 等)が入る時のみ minor を上げる。
@@ -130,50 +135,68 @@ namespace CompanionAIVerify
     // --- Tunables (companion_config.txt で上書き可能) --------------------------
     internal static class Cfg
     {
-        internal static bool    Enabled          = false;          // 起動時OFF。F8でトグル(ファイル対象外)
-        internal const  KeyCode ToggleKey        = KeyCode.F8;
-        internal static float   StandoffMeters   = 3.0f;           // これ以内なら停止
-        internal static float   RunMeters        = 8.0f;           // これ以上離れたら走る
+        internal static bool    Enabled                    = false;          // 起動時OFF。F8でトグル(ファイル対象外)
+        internal const  KeyCode ToggleKey                  = KeyCode.F8;
+        internal static float   StandoffMeters             = 3.0f;           // これ以内なら停止
+        internal static float   RunMeters                  = 8.0f;           // これ以上離れたら走る
 
-        internal static float   ThreatScanRadius = 20.0f;          // 脅威走査半径(m)
-        internal static bool    CombatMode       = true;           // true=脅威を向く/叩く
-        internal static float   LogThrottleSec   = 0.5f;           // 検知/交戦ログの最小間隔
+        internal static float   ThreatScanRadius           = 20.0f;          // 脅威走査半径(m)
+        internal static bool    CombatMode                 = true;           // true=脅威を向く/叩く
+        internal static float   LogThrottleSec             = 0.5f;           // 検知/交戦ログの最小間隔
 
         // --- 交戦スライス（近接, ver0.3） ---
-        internal static float   ReachBuffer      = 0.5f;           // 近接射程判定の余裕(m)
+        internal static float   ReachBuffer                = 0.5f;           // 近接射程判定の余裕(m)
         // ★ 実ログで bFirstPersonView の実値を観測。false と分かれば true で spawn 誤設定を自己修復。
-        internal static bool    ForceFirstPerson = false;
+        internal static bool    ForceFirstPerson           = false;
 
         // --- 発砲スライス（遠距離, ver0.4） ---
-        internal static bool    EnableRangedFire     = true;       // false で従来の deferred ログのみ
-        internal static float   RangedMaxEngageMeters= 18.0f;      // これ以内の脅威にのみ発砲(m)
-        internal static float   RangedFireIntervalSec= 0.4f;       // 発砲ケイデンス(≒2.5発/秒)
+        internal static bool    EnableRangedFire           = true;       // false で従来の deferred ログのみ
+        internal static float   RangedMaxEngageMeters      = 18.0f;      // これ以内の脅威にのみ発砲(m)
+        internal static float   RangedFireIntervalSec      = 0.4f;       // 発砲ケイデンス(≒2.5発/秒)
 
         // --- ハイブリッド狙点（ver0.5） ---
         //   実測: 命中は headLift≈1.5-2.0、非命中は≈0-0.7 で分離。
-        internal static float   HeadAimMinLift       = 1.2f;       // これ以上なら頭狙い、未満は胴中心
+        internal static float   HeadAimMinLift             = 1.2f;       // これ以上なら頭狙い、未満は胴中心
 
         // --- カメラ配達ラグ対策（ver0.6）＋視差補正（ver0.7） ---
         //   発砲直前に playerCamera.transform を狙点へ即時スナップし、配達ラグ＋視差を解消。
-        internal static bool    SnapCameraOnFire     = true;
+        internal static bool    SnapCameraOnFire           = true;
 
         // --- 視差A/B用トグル（v0.5.3） ---
         //   true=カメラ実位置基準（補正あり） / false=頭ボーン基準（補正なし・旧挙動）。
-        internal static bool    AimFromCameraOrigin  = true;
+        internal static bool    AimFromCameraOrigin        = true;
 
         // --- ADS（サイトを覗く射撃, ver0.8） ---
         //   AimingGun=true で拡散が hip(1.0)→aiming(0.1) と10倍縮む(ItemActionRanged:1346, 748)。
-        internal static bool    AimDownSightsOnEngage = true;
+        internal static bool    AimDownSightsOnEngage      = true;
 
         // --- hit検証＋シュータブル・ゲート（v0.6.0） ---
         //   発砲前に自前 Voxel.Raycast で「射線が対象コライダーに届くか」を検証。
         //   候補狙点(頭/胴中心/腹)を順に試し、対象に当たる点だけ採用。全滅なら撃たずホールド。
         //   遮蔽(block)・FF(別entity)・空(sky) を理由としてログ化。
-        internal static bool    RequireShootable     = true;
+        internal static bool    RequireShootable           = true;
 
         // --- フルオート連射（v0.6.0） ---
         //   GetBurstCount==0 の武器はトリガー押しっぱなしで RPM 連射（false で全銃 FireInterval 単発）。
-        internal static bool    FullAutoHold         = true;
+        internal static bool    FullAutoHold               = true;
+
+        // --- (A) 武器自動切替（v0.7） ---
+        internal static bool    AutoWeaponSwitch           = true;
+        internal static float   SwitchToMeleeMeters        = 3.5f;   // これ以下→近接
+        internal static float   SwitchToRangedMeters       = 5.5f;   // これ以上→銃（間はデッドバンド）
+        internal static float   WeaponSwitchMinIntervalSec = 0.6f;   // 連続切替の最小間隔
+        internal static float   LoadoutScanIntervalSec     = 1.0f;   // ツールベルト走査throttle
+
+        // --- (B) ツールベルト優先配置（v0.7） ---
+        internal static bool    AutoStowWeaponsToToolbelt  = true;
+        internal static float   ToolbeltStowIntervalSec    = 5.0f;
+        internal static bool    StowDynamicMelee           = true;   // dynamic melee も武器扱い（工具含む点に注意）
+
+        // --- (C) リーダー落下物拾得（v0.7） ---
+        internal static bool    AutoPickupLeaderDrops      = true;
+        internal static float   PickupRadius               = 6.0f;
+        internal static float   PickupScanIntervalSec      = 0.5f;
+        internal static bool    PickupUnowned              = false;  // belongsPlayerId<=0 も拾う
     }
 
     // --- 外部設定ファイル (companion_config.txt) -------------------------------
@@ -252,22 +275,34 @@ namespace CompanionAIVerify
         {
             switch (key)
             {
-                case "CombatMode":            return TryBool(val, ref Cfg.CombatMode);
-                case "EnableRangedFire":      return TryBool(val, ref Cfg.EnableRangedFire);
-                case "ForceFirstPerson":      return TryBool(val, ref Cfg.ForceFirstPerson);
-                case "SnapCameraOnFire":      return TryBool(val, ref Cfg.SnapCameraOnFire);
-                case "AimFromCameraOrigin":   return TryBool(val, ref Cfg.AimFromCameraOrigin);
-                case "AimDownSightsOnEngage": return TryBool(val, ref Cfg.AimDownSightsOnEngage);
-                case "RequireShootable":      return TryBool(val, ref Cfg.RequireShootable);
-                case "FullAutoHold":          return TryBool(val, ref Cfg.FullAutoHold);
-                case "StandoffMeters":        return TryF(val, ref Cfg.StandoffMeters);
-                case "RunMeters":             return TryF(val, ref Cfg.RunMeters);
-                case "ThreatScanRadius":      return TryF(val, ref Cfg.ThreatScanRadius);
-                case "LogThrottleSec":        return TryF(val, ref Cfg.LogThrottleSec);
-                case "ReachBuffer":           return TryF(val, ref Cfg.ReachBuffer);
-                case "HeadAimMinLift":        return TryF(val, ref Cfg.HeadAimMinLift);
-                case "RangedMaxEngageMeters": return TryF(val, ref Cfg.RangedMaxEngageMeters);
-                case "RangedFireIntervalSec": return TryF(val, ref Cfg.RangedFireIntervalSec);
+                case "CombatMode":                 return TryBool(val, ref Cfg.CombatMode);
+                case "EnableRangedFire":           return TryBool(val, ref Cfg.EnableRangedFire);
+                case "ForceFirstPerson":           return TryBool(val, ref Cfg.ForceFirstPerson);
+                case "SnapCameraOnFire":           return TryBool(val, ref Cfg.SnapCameraOnFire);
+                case "AimFromCameraOrigin":        return TryBool(val, ref Cfg.AimFromCameraOrigin);
+                case "AimDownSightsOnEngage":      return TryBool(val, ref Cfg.AimDownSightsOnEngage);
+                case "RequireShootable":           return TryBool(val, ref Cfg.RequireShootable);
+                case "FullAutoHold":               return TryBool(val, ref Cfg.FullAutoHold);
+                case "StandoffMeters":             return TryF(val, ref Cfg.StandoffMeters);
+                case "RunMeters":                  return TryF(val, ref Cfg.RunMeters);
+                case "ThreatScanRadius":           return TryF(val, ref Cfg.ThreatScanRadius);
+                case "LogThrottleSec":             return TryF(val, ref Cfg.LogThrottleSec);
+                case "ReachBuffer":                return TryF(val, ref Cfg.ReachBuffer);
+                case "HeadAimMinLift":             return TryF(val, ref Cfg.HeadAimMinLift);
+                case "RangedMaxEngageMeters":      return TryF(val, ref Cfg.RangedMaxEngageMeters);
+                case "RangedFireIntervalSec":      return TryF(val, ref Cfg.RangedFireIntervalSec);
+                case "AutoWeaponSwitch":           return TryBool(val, ref Cfg.AutoWeaponSwitch);
+                case "AutoStowWeaponsToToolbelt":  return TryBool(val, ref Cfg.AutoStowWeaponsToToolbelt);
+                case "StowDynamicMelee":           return TryBool(val, ref Cfg.StowDynamicMelee);
+                case "AutoPickupLeaderDrops":      return TryBool(val, ref Cfg.AutoPickupLeaderDrops);
+                case "PickupUnowned":              return TryBool(val, ref Cfg.PickupUnowned);
+                case "SwitchToMeleeMeters":        return TryF(val, ref Cfg.SwitchToMeleeMeters);
+                case "SwitchToRangedMeters":       return TryF(val, ref Cfg.SwitchToRangedMeters);
+                case "WeaponSwitchMinIntervalSec": return TryF(val, ref Cfg.WeaponSwitchMinIntervalSec);
+                case "LoadoutScanIntervalSec":     return TryF(val, ref Cfg.LoadoutScanIntervalSec);
+                case "ToolbeltStowIntervalSec":    return TryF(val, ref Cfg.ToolbeltStowIntervalSec);
+                case "PickupRadius":               return TryF(val, ref Cfg.PickupRadius);
+                case "PickupScanIntervalSec":      return TryF(val, ref Cfg.PickupScanIntervalSec);
                 default: return false;
             }
         }
@@ -455,6 +490,11 @@ namespace CompanionAIVerify
 
             float reach = GetAttackReach(self);
             float d     = Mathf.Sqrt(threat.DistSq);
+
+            // ★ v0.7(A): 交戦距離に応じた武器自動切替。切替した frame は settle のため即 return。
+            WeaponSelector.RefreshLoadout(self, force: false);
+            if (Cfg.AutoWeaponSwitch && WeaponSelector.MaybeSwitch(self, d)) return;
+
             bool  inRange = d <= reach + Cfg.ReachBuffer;
 
             bool isRanged;
@@ -794,6 +834,232 @@ namespace CompanionAIVerify
         }
     }
 
+    internal enum WeaponMode { None, Melee, Ranged }
+
+    // --- (A) 武器自動切替 -----------------------------------------------------
+    //   ツールベルトの「最初の銃スロット / 最初の近接スロット」をキャッシュし、
+    //   脅威距離に応じてヒステリシスで持ち替える。持ち替えは NetPackageHoldingItem 経由で
+    //   サーバへ同期される（EntityAlive:3082 ForceHoldingWeaponUpdate）。
+    internal static class WeaponSelector
+    {
+        private static int   _rangedSlot = -1;
+        private static int   _meleeSlot  = -1;
+        private static float _nextScan;
+        private static float _nextSwitchTime;
+        private static WeaponMode _wantMode = WeaponMode.None;
+
+        // 保持中アイテムのモード（銃/近接/その他）。素手・工具・ブロックは None。
+        internal static WeaponMode CurrentHeldMode(EntityPlayerLocal self)
+        {
+            var inv = self.inventory;
+            var hi  = inv != null ? inv.holdingItem : null;
+            var a   = (hi != null && hi.Actions != null && hi.Actions.Length > 0) ? hi.Actions[0] : null;
+            if (a is ItemActionRanged) return WeaponMode.Ranged;
+            if (a is ItemActionMelee || a is ItemActionDynamicMelee) return WeaponMode.Melee;
+            return WeaponMode.None;
+        }
+
+        // ツールベルト走査（throttled）。最初の銃/近接スロットを記録。
+        internal static void RefreshLoadout(EntityPlayerLocal self, bool force)
+        {
+            if (!force && Time.time < _nextScan) return;
+            _nextScan = Time.time + Cfg.LoadoutScanIntervalSec;
+
+            _rangedSlot = -1;
+            _meleeSlot  = -1;
+            var inv = self.inventory;
+            if (inv == null) return;
+
+            int n = inv.PUBLIC_SLOTS; // 再生モードで 10
+            for (int i = 0; i < n; i++)
+            {
+                ItemStack st = inv.GetItem(i);
+                if (st == null || st.IsEmpty()) continue;
+                ItemClass ic = st.itemValue.ItemClass;
+                if (ic == null || ic.Actions == null || ic.Actions.Length == 0) continue;
+                var a = ic.Actions[0];
+                if (_rangedSlot < 0 && a is ItemActionRanged) _rangedSlot = i;
+                else if (_meleeSlot < 0 && (a is ItemActionMelee || a is ItemActionDynamicMelee)) _meleeSlot = i;
+            }
+        }
+
+        // 距離に応じて希望モードを決め、必要なら持ち替える。切替を発火したら true。
+        //   true を返したフレームは呼び出し側で即 return（settle）。
+        internal static bool MaybeSwitch(EntityPlayerLocal self, float d)
+        {
+            var inv = self.inventory;
+            if (inv == null) return false;
+
+            bool haveR = _rangedSlot >= 0;
+            bool haveM = _meleeSlot  >= 0;
+            if (!haveR && !haveM) return false; // 素手のみ → 既存 melee 経路へ委譲
+
+            WeaponMode want;
+            if (haveR && haveM)
+            {
+                if (d <= Cfg.SwitchToMeleeMeters)       want = WeaponMode.Melee;
+                else if (d >= Cfg.SwitchToRangedMeters) want = WeaponMode.Ranged;
+                else // デッドバンド：現状維持。未確定なら中点で決める。
+                    want = (_wantMode != WeaponMode.None)
+                        ? _wantMode
+                        : (d <= (Cfg.SwitchToMeleeMeters + Cfg.SwitchToRangedMeters) * 0.5f
+                            ? WeaponMode.Melee : WeaponMode.Ranged);
+            }
+            else
+            {
+                want = haveR ? WeaponMode.Ranged : WeaponMode.Melee; // 片方のみ → それを使う（安全側）
+            }
+            _wantMode = want;
+
+            if (CurrentHeldMode(self) == want) return false; // 既に希望モード
+
+            int slot = (want == WeaponMode.Ranged) ? _rangedSlot : _meleeSlot;
+            if (slot < 0 || slot == inv.holdingItemIdx) return false;
+            if (Time.time < _nextSwitchTime) return false;
+            _nextSwitchTime = Time.time + Cfg.WeaponSwitchMinIntervalSec;
+
+            // 旧武器の press を掃除してから持ち替え（ダングリング press / ADS 残り防止）
+            CombatDriver.ReleaseIfPressed(self);
+            CombatDriver.ReleaseFireIfPressed(self);
+            inv.SetHoldingItemIdxNoHolsterTime(slot); // ホルスター遅延なし。ShowHeldItem 経由でサーバ同期
+
+            Log.Out(string.Format(
+                "[CompanionAI] weapon-switch: -> {0} slot={1} d={2:0.0}m (R={3} M={4})",
+                want, slot, d, _rangedSlot, _meleeSlot));
+            return true;
+        }
+    }
+
+    // --- (B) ツールベルト優先配置 --------------------------------------------
+    //   bag を走査し、武器(銃/近接)をツールベルトへ移送。throttled。
+    //   注意: dynamic melee は斧・つるはし等の「工具」も含む。武器/工具の厳密区別は
+    //   ItemTags 精査を要する follow-up（現状は Actions[0] 型分類で近似）。
+    internal static class ItemStower
+    {
+        private static float _nextRun;
+
+        internal static void MaybeRun(EntityPlayerLocal self, bool force)
+        {
+            if (!Cfg.AutoStowWeaponsToToolbelt) return;
+            if (!force && Time.time < _nextRun) return;
+            _nextRun = Time.time + Cfg.ToolbeltStowIntervalSec;
+            Run(self);
+        }
+
+        private static void Run(EntityPlayerLocal self)
+        {
+            Bag bag       = self.bag;
+            Inventory inv = self.inventory;
+            if (bag == null || inv == null) return;
+
+            ItemStack[] bslots = bag.GetSlots(); // 生配列。SetSlot で直接更新される
+            if (bslots == null) return;
+
+            int moved = 0;
+            for (int i = 0; i < bslots.Length; i++)
+            {
+                ItemStack st = bslots[i];
+                if (st == null || st.IsEmpty()) continue;
+                if (!IsWeaponStack(st)) continue;
+                if (!inv.CanTakeItem(st)) continue; // ツールベルトに空き無し → skip
+
+                // AddItem は itemValue を Clone して配置。成功したら bag 側を空に。
+                if (inv.AddItem(st.Clone(), out int slot) && slot >= 0)
+                {
+                    bag.SetSlot(i, ItemStack.Empty, true);
+                    moved++;
+                    Log.Out(string.Format(
+                        "[CompanionAI] stow: bag[{0}] -> toolbelt[{1}] {2}",
+                        i, slot, DescribeStack(st)));
+                }
+            }
+            if (moved > 0)
+                Log.Out(string.Format("[CompanionAI] stow: moved {0} weapon stack(s) to toolbelt.", moved));
+        }
+
+        internal static bool IsWeaponStack(ItemStack st)
+        {
+            ItemClass ic = st.itemValue.ItemClass;
+            if (ic == null || ic.Actions == null || ic.Actions.Length == 0) return false;
+            var a = ic.Actions[0];
+            if (a is ItemActionRanged) return true;
+            if (a is ItemActionMelee)  return true;
+            if (Cfg.StowDynamicMelee && a is ItemActionDynamicMelee) return true;
+            return false;
+        }
+
+        private static string DescribeStack(ItemStack st)
+        {
+            ItemClass ic = st.itemValue.ItemClass;
+            string nm = ic != null && ic.Name != null ? ic.Name : ("type" + st.itemValue.type);
+            return nm + " x" + st.count;
+        }
+    }
+
+    // --- (C) リーダー落下物拾得 ----------------------------------------------
+    //   navigator=null で自律移動不可のため「検知半径内で Collect を撃つ」方針（移動しない）。
+    //   Collect は非サーバ側では NetPackageEntityCollect をサーバへ送るのみ（Entity:3202）。
+    //   実デポジット挙動（EntityItem.OnCollectServer）と手動ドロップ品の belongsPlayerId
+    //   セマンティクスは実機ログで確定する（本ハーネスの検証対象）。
+    internal static class LeaderItemPickup
+    {
+        private static readonly List<Entity> _buf = new List<Entity>();
+        private static float _nextScan;
+        private static float _nextLog;
+
+        internal static void MaybeRun(EntityPlayerLocal self, EntityPlayer leader)
+        {
+            if (!Cfg.AutoPickupLeaderDrops || leader == null) return;
+            if (Time.time < _nextScan) return;
+            _nextScan = Time.time + Cfg.PickupScanIntervalSec;
+
+            World world = self.world;
+            if (world == null) return;
+
+            float r = Cfg.PickupRadius;
+            var box = new Bounds(self.position, new Vector3(r * 2f, r * 2f, r * 2f));
+            _buf.Clear();
+            // クラスフィルタ列挙。EntityItem は非生存だがこの版は class で拾う（World:2390）。
+            world.GetEntitiesInBounds(typeof(EntityItem), box, _buf);
+            if (_buf.Count == 0) return;
+
+            float rSq = r * r;
+            int seen = 0, collected = 0;
+            int firstOwner = int.MinValue; // 診断: 最初の item の所有者
+            for (int i = 0; i < _buf.Count; i++)
+            {
+                Entity e = _buf[i];
+                if (e == null || e.IsDead()) continue;
+                float dSq = (e.position - self.position).sqrMagnitude;
+                if (dSq > rSq) continue;
+
+                seen++;
+                if (firstOwner == int.MinValue) firstOwner = e.belongsPlayerId;
+
+                bool leaderOwned = e.belongsPlayerId == leader.entityId;
+                bool freeToGrab  = Cfg.PickupUnowned && e.belongsPlayerId <= 0;
+                if (leaderOwned || freeToGrab)
+                {
+                    e.Collect(self.entityId); // サーバへ NetPackageEntityCollect
+                    collected++;
+                    Log.Out(string.Format(
+                        "[CompanionAI] pickup: collect id={0} owner={1} d={2:0.0}m ({3})",
+                        e.entityId, e.belongsPlayerId, Mathf.Sqrt(dSq),
+                        leaderOwned ? "leader" : "unowned"));
+                }
+            }
+
+            // 近傍 item の所有者セマンティクス確認用の throttled 診断。
+            if (seen > 0 && collected == 0 && Time.time >= _nextLog)
+            {
+                _nextLog = Time.time + 1.0f;
+                Log.Out(string.Format(
+                    "[CompanionAI] pickup: {0} item(s) in range, none matched (firstOwner={1}, leaderId={2}, selfId={3}).",
+                    seen, firstOwner, leader.entityId, self.entityId));
+            }
+        }
+    }
+
     // --- Executor ------------------------------------------------------------
     internal static class CompanionExecutor
     {
@@ -816,6 +1082,11 @@ namespace CompanionAIVerify
 
             EntityPlayer leader = FindNearestLeader(world, self);
             if (leader == null) { CombatDriver.ReleaseIfPressed(self); CombatDriver.ReleaseFireIfPressed(self); Stop(self); return; }
+
+            if (Cfg.Enabled) { WeaponSelector.RefreshLoadout(self, force: true); ItemStower.MaybeRun(self, force: true); }
+
+            ItemStower.MaybeRun(self, force: false);
+            LeaderItemPickup.MaybeRun(self, leader);
 
             // --- 脅威検知（Section B） ---
             ThreatInfo threat = ThreatScanner.ScanNearestActiveThreat(world, self);
