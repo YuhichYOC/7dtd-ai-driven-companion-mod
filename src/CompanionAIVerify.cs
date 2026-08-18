@@ -37,10 +37,14 @@ using UnityEngine;
 //   実際に当てたもの(actual)   = self.MinEventContext.Other（fireShot がゲート内で設定,
 //     命中エンティティ / 非命中は null。ItemActionRanged:1194 null化, 1462 格納）。
 //   → hit=TARGET / OTHER id=N(FF疑い) / none(block/miss) を判別。
-//   併せて headLift = target.getHeadPosition().y - target.position.y を出力し、
-//   スパイダー等「頭が異常に低い」体格を定量化する（狙点ずれ診断の材料）。
-//   命中部位(頭/脚)まで要る場合は ItemActionAttack.FindHitEntityNoTagCheck(out bodyPartName)
-//   (988) を自前レイキャストで併用する余地あり（本版では entity レベルまで）。
+//
+// ── ver0.5 追加(修正): ハイブリッド狙点 ──
+//   計測結果: 命中は headLift≈1.5-2.0、非命中は≈0-0.7（負値は頭が足元より下）。
+//   頭ボーンは低姿勢(四足/突進/のけぞり)で当たり判定を外すため、headLift でゲート:
+//     headLift >= HeadAimMinLift → 頭狙い（立ち姿勢のヘッドショット維持）
+//     未満                        → position + up*scaledExtent.y（AABB縦中心, 姿勢非依存）
+//   fire ログに aim=head/center と aimLift を追加し、低headLift の弾が
+//   none→TARGET に転じるかをテストで直接集計できるようにする（しきい値は要調整）。
 //
 // ★ bFirstPersonView が「実行時に決まる」ことの接地（監査より重要）:
 //   spawn/respawn 時 AfterPlayerRespawn(EPL:3715) → AttachedToEntity==null なら
@@ -114,6 +118,11 @@ namespace CompanionAIVerify
         internal static bool    EnableRangedFire     = true;       // false で従来の deferred ログのみ
         internal const  float   RangedMaxEngageMeters= 18.0f;      // これ以内の脅威にのみ発砲(m)
         internal const  float   RangedFireIntervalSec= 0.4f;       // 発砲ケイデンス(≒2.5発/秒)。個々の弾が見える程度に抑制
+
+        // --- ハイブリッド狙点（ver0.5） ---
+        //   ログ実測: 命中は headLift≈1.5-2.0、非命中は≈0-0.7 で分離。
+        //   頭が十分高い時のみ頭を狙い、低姿勢(四足/突進/のけぞり)は AABB 縦中心へ落とす。
+        internal const  float   HeadAimMinLift       = 1.2f;       // これ以上なら頭狙い、未満は胴中心。要調整
     }
 
     // --- Threat sensing ------------------------------------------------------
@@ -306,8 +315,18 @@ namespace CompanionAIVerify
 
             if (d > Cfg.RangedMaxEngageMeters) { ReleaseFireIfPressed(self); return; }
 
-            // 頭部狙点へエイム（両端の頭ボーンで最精度）
-            FaceTargetHead(self, threat.Target);
+            // ★ ハイブリッド狙点解決（ver0.5）
+            //   頭ボーンは低姿勢で当たり判定を外すため、headLift でゲート。
+            EntityAlive tgt = threat.Target;
+            float headLift = tgt.getHeadPosition().y - tgt.position.y;
+            bool  useHead  = headLift >= Cfg.HeadAimMinLift;
+            Vector3 aimPoint = useHead
+                ? tgt.getHeadPosition()                            // 立ち姿勢: 頭（ヘッドショット維持）
+                : tgt.position + Vector3.up * tgt.scaledExtent.y;  // 低姿勢: AABB縦中心（姿勢非依存）
+            string aimMode = useHead ? "head" : "center";
+            float  aimLift = aimPoint.y - tgt.position.y;
+
+            FaceAimPoint(self, aimPoint);
 
             // release フェーズ優先：前フレームで press 済みなら今フレームは離す
             if (_firePressed)
@@ -330,22 +349,18 @@ namespace CompanionAIVerify
             {
                 if (after < before) // 実際に1発消費された＝発砲成立
                 {
-                    // ★ 計測: 狙ったターゲット(intended) と 実際に当てたもの(actual) を突き合わせる。
-                    //   actual は EntityZombie フィールドでなく、ゲートが fireShot で設定した
-                    //   self.MinEventContext.Other（命中エンティティ / 非命中は null）から読む。
-                    //   (ItemActionRanged:1194 で null 化, 1462 で命中時に格納)
+                    // ★ 計測: intended(threat.Target) と actual(MinEventContext.Other) を突き合わせ。
+                    //   併せて どちらの狙点を使ったか(aim=head/center) を記録し、
+                    //   低headLift で center に切替えた弾が none→TARGET に変わったか集計可能にする。
                     Entity hitE = self.MinEventContext != null ? self.MinEventContext.Other : null;
                     string hitDesc;
                     if (hitE == null)                              hitDesc = "none(block/miss)";
-                    else if (hitE.entityId == threat.Target.entityId) hitDesc = "TARGET";
+                    else if (hitE.entityId == tgt.entityId)        hitDesc = "TARGET";
                     else                                           hitDesc = "OTHER id=" + hitE.entityId;
 
-                    // 狙点(頭)が足元からどれだけ高いか＝スパイダー等の「頭が異常に低い」を定量化。
-                    float headLift = threat.Target.getHeadPosition().y - threat.Target.position.y;
-
                     Log.Out(string.Format(
-                        "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} headLift={4:0.00}m -> hit={5}",
-                        threat.Kind, threat.Target.entityId, d, after, headLift, hitDesc));
+                        "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} headLift={4:0.00}m aim={5}({6:0.00}m) -> hit={7}",
+                        threat.Kind, tgt.entityId, d, after, headLift, aimMode, aimLift, hitDesc));
                 }
                 else if (after == 0) // 空＝リロード待ち（ゲートが自動要求）
                 {
@@ -368,13 +383,12 @@ namespace CompanionAIVerify
             return iv != null ? iv.Meta : -1;
         }
 
-        // 頭部→頭部でエイム。ranged ショットは GetLookRay(camera) 由来なので
+        // 任意の狙点へエイム。ranged ショットは GetLookRay(camera) 由来なので
         // SetRotation でカメラを向ければ着弾する（ItemActionRanged:1579, EPL:2310）。
-        private static void FaceTargetHead(EntityPlayerLocal self, EntityAlive target)
+        private static void FaceAimPoint(EntityPlayerLocal self, Vector3 aimPoint)
         {
-            Vector3 eye  = self.getHeadPosition();
-            Vector3 head = target.getHeadPosition();
-            Vector3 dir  = head - eye;
+            Vector3 eye = self.getHeadPosition();
+            Vector3 dir = aimPoint - eye;
             if (dir.sqrMagnitude < 1e-6f) return;
 
             Vector3 euler = Quaternion.LookRotation(dir.normalized, Vector3.up).eulerAngles;
