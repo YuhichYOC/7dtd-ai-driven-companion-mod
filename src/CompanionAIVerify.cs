@@ -3,6 +3,10 @@ using HarmonyLib;
 using UnityEngine;
 
 // =============================================================================
+// Companion AI verify harness — Build v0.5.3 (旧 v0.8)
+//   採番方針: 交戦(engage)スライス系列は v0.5.x。tuning/診断は patch(.1,.2,.3)、
+//   新capability(engage-maneuver/navigation 等)が入る時のみ minor を上げる。
+// -----------------------------------------------------------------------------
 // Companion AI — locomotion + facing + threat-sensing + ENGAGE(melee+ranged)
 // (7DTD 3.1.0)
 // -----------------------------------------------------------------------------
@@ -55,6 +59,21 @@ using UnityEngine;
 //   修正候補(トグル SnapCameraOnFire): 発砲直前に playerCamera.transform を狙点へ即時スナップ。
 //     false=ベースライン(errDeg 大を確認) / true=errDeg≈0 と命中改善を確認（同一セッションA/B）。
 //
+// ── ver0.7 追加(修正): 視差(パララックス)補正 ──
+//   実測: snap=true で errDeg=0（配達ラグ解消）だが、至近＋大俯角のみ none 連発。
+//   原因: 狙い方向を頭ボーン基準で作っていたが、弾は GetLookRay()=カメラ位置から出る。
+//     頭とカメラの微小オフセットは遠距離で無視できても至近で致命的（距離依存の外れ）。
+//   修正: スナップ方向を「カメラ実ワールド位置(playerCamera.transform.position+Origin.position)
+//     → 狙点」で計算。Entity.position はワールド(Entity:938)。既定 SnapCameraOnFire=true。
+//   診断: missDist（実レイ GetLookRay と aimPoint の最短距離）を追加。至近で≈0 に落ちれば視差確定。
+//
+// ── ver0.8 追加(改善): ADS（サイトを覗く射撃） ──
+//   これまで全弾ヒップ＝最大拡散。AimingGun=true で拡散 hip(1.0)→aiming(0.1) の10倍縮小
+//   (ItemActionRanged:1346, 更新は 748 で holdingEntity.AimingGun を参照)。
+//   視差(v0.7)とは別軸で、狙点周りの散布界を絞る。発砲前に SetAds(true)、
+//   離脱時 ReleaseFireIfPressed で SetAds(false)。secondary action(Actions[1]) 持ちのみ。
+//   fire ログに ads=on/off を追加。
+//
 // ★ bFirstPersonView が「実行時に決まる」ことの接地（監査より重要）:
 //   spawn/respawn 時 AfterPlayerRespawn(EPL:3715) → AttachedToEntity==null なら
 //   SwitchToPreferredCameraMode(EPL:3645) が走る。そこで
@@ -101,7 +120,7 @@ namespace CompanionAIVerify
         {
             var harmony = new Harmony("companionai.verify");
             harmony.PatchAll();
-            Log.Out("[CompanionAI] verify harness loaded (follow + facing + threat-scan + engage). F8 to toggle drive.");
+            Log.Out("[CompanionAI] verify harness v0.5.3 loaded (follow + facing + threat-scan + engage[melee+ranged/parallax/ADS]). F8 to toggle drive.");
         }
     }
 
@@ -133,12 +152,23 @@ namespace CompanionAIVerify
         //   頭が十分高い時のみ頭を狙い、低姿勢(四足/突進/のけぞり)は AABB 縦中心へ落とす。
         internal const  float   HeadAimMinLift       = 1.2f;       // これ以上なら頭狙い、未満は胴中心。要調整
 
-        // --- カメラ配達ラグ対策（ver0.6） ---
+        // --- カメラ配達ラグ対策（ver0.6）＋視差補正（ver0.7） ---
         //   弾は GetLookRay()=playerCamera.transform 由来。SetRotation はカメラを Angle 経由で
-        //   遅延反映するため、同フレーム発砲では前フレームのカメラ向きで撃ってしまう。
+        //   遅延反映するため、同フレーム発砲では前フレームのカメラ向きで撃ってしまう(=配達ラグ)。
         //   ON にすると発砲直前に playerCamera.transform を狙点へ即時スナップしてラグを消す。
-        //   まず false でベースライン(errDeg 大)を確認 → true で errDeg≈0 と命中改善を確認(A/B)。
+        //   ver0.7: スナップ方向を「カメラ実位置(=弾の原点)→狙点」で計算し視差を除去。
+        //   実測で配達ラグ解消が確認できたため既定 true。
         internal static bool    SnapCameraOnFire     = true;
+
+        // --- 視差A/B用トグル（v0.5.3） ---
+        //   true = カメラ実位置基準（視差補正あり, 既定） / false = 頭ボーン基準（補正なし・旧挙動）。
+        //   ADS を off にして本トグルだけ A/B すると、視差の hit% 寄与が missDist の差として出る。
+        internal static bool    AimFromCameraOrigin  = true;
+
+        // --- ADS（サイトを覗く射撃, ver0.8） ---
+        //   AimingGun=true で拡散が hip(1.0)→aiming(0.1) と10倍縮む(ItemActionRanged:1346, 748)。
+        //   視差(v0.7で解消)とは別軸。狙点の周りの散布界を絞る。secondary action を持つ銃のみ。
+        internal static bool    AimDownSightsOnEngage = true;
     }
 
     // --- Threat sensing ------------------------------------------------------
@@ -251,6 +281,7 @@ namespace CompanionAIVerify
         private static bool  _firePressed;        // 前フレームで press した→今フレーム release
         private static float _nextFireTime;
         private static int   _lastMeta = int.MinValue;
+        private static bool  _adsOn;              // ADS(サイト覗き)状態。変化時のみトグル
 
         // 交戦オーバーレイ。posture 決定の後に最後に呼ぶ（in-range 時の 3D エイムが
         // 平面 facing を同フレーム内で上書きするため）。
@@ -302,7 +333,7 @@ namespace CompanionAIVerify
             }
         }
 
-        // 遠距離のトリガーも安全に開放（脅威消失/無効化/切替時に呼ぶ）。
+        // 遠距離のトリガーも安全に開放（脅威消失/無効化/切替時に呼ぶ）。ADSも解除。
         internal static void ReleaseFireIfPressed(EntityPlayerLocal self)
         {
             if (_firePressed)
@@ -310,6 +341,29 @@ namespace CompanionAIVerify
                 self.Attack(true);
                 _firePressed = false;
             }
+            SetAds(self, false);
+        }
+
+        // ADS(サイト覗き)状態を変化時のみ切替。AimingGun setter は FOV/animator/Actions[1] に
+        // 副作用があるため冪等呼び出しを避ける。secondary action を持たない銃では発動しない。
+        private static void SetAds(EntityPlayerLocal self, bool on)
+        {
+            if (on && !Cfg.AimDownSightsOnEngage) on = false;
+            if (on && !CanAimDownSights(self)) on = false;
+            if (on == _adsOn) return;
+            _adsOn = on;
+            self.AimingGun = on; // 拡散 hip(1.0)↔aiming(0.1) を切替(ItemActionRanged:748,1346)
+        }
+
+        // ADS 可否: secondary action(Actions[1]) と actionData[1] が存在すること。
+        // (AimingGun setter が actionData[1] を直接参照＝境界外で例外になるためのガード)
+        private static bool CanAimDownSights(EntityPlayerLocal self)
+        {
+            var inv = self.inventory;
+            var hi  = inv != null ? inv.holdingItem : null;
+            var hid = inv != null ? inv.holdingItemData : null;
+            return hi != null && hi.Actions != null && hi.Actions.Length >= 2 && hi.Actions[1] != null
+                && hid != null && hid.actionData != null && hid.actionData.Length >= 2;
         }
 
         // ★ 発砲ドライバ。press(フレームN)→release(フレームN+1) を FireInterval ごとに回す。
@@ -342,9 +396,9 @@ namespace CompanionAIVerify
             string aimMode = useHead ? "head" : "center";
             float  aimLift = aimPoint.y - tgt.position.y;
 
-            // 意図方向（頭の位置から狙点へ）。SetRotation はこの向きで body/camera Angle を更新。
-            Vector3 aimDir = (aimPoint - self.getHeadPosition());
-            SetAimRotation(self, aimDir);
+            // 意図方向（頭の位置から狙点へ）：body/視覚トラッキング用（見た目の照準）。
+            Vector3 bodyDir = (aimPoint - self.getHeadPosition());
+            SetAimRotation(self, bodyDir);
 
             // release フェーズ優先：前フレームで press 済みなら今フレームは離す
             if (_firePressed)
@@ -357,11 +411,22 @@ namespace CompanionAIVerify
             // press フェーズ：ケイデンス到来時のみ
             if (Time.time < _nextFireTime) return;
 
-            // ★ ver0.6: 発砲直前にカメラ transform を狙点へ即時スナップ（配達ラグ対策, トグル）
-            if (Cfg.SnapCameraOnFire && self.playerCamera != null && aimDir.sqrMagnitude > 1e-6f)
+            // ★ ver0.7 視差補正 + v0.5.3 A/Bトグル: 弾は GetLookRay()=カメラ位置から出る。
+            //   狙い原点を カメラ実位置(補正あり) / 頭ボーン(補正なし) で切替可能にする。
+            //   camera.transform は origin 相対、Entity.position はワールド(Entity:938)。
+            Vector3 shotOrigin = (Cfg.AimFromCameraOrigin && self.playerCamera != null)
+                ? self.playerCamera.transform.position + Origin.position
+                : self.getHeadPosition();
+            Vector3 shotDir = aimPoint - shotOrigin;
+
+            // ★ ver0.8 ADS: 発砲前にサイトを覗く（拡散を10倍絞る）。secondary action 持ちのみ。
+            SetAds(self, true);
+
+            // 発砲直前にカメラ transform を狙点へ即時スナップ（配達ラグ＋視差を同時に解消）
+            if (Cfg.SnapCameraOnFire && self.playerCamera != null && shotDir.sqrMagnitude > 1e-6f)
             {
                 self.playerCamera.transform.rotation =
-                    Quaternion.LookRotation(aimDir.normalized, Vector3.up);
+                    Quaternion.LookRotation(shotDir.normalized, Vector3.up);
             }
 
             int before = GetHoldingMeta(self);
@@ -381,17 +446,21 @@ namespace CompanionAIVerify
                     else if (hitE.entityId == tgt.entityId)        hitDesc = "TARGET";
                     else                                           hitDesc = "OTHER id=" + hitE.entityId;
 
-                    // ★ ver0.6 診断: 実際の射撃レイ(GetLookRay) と 意図方向 の角度差＋ピッチ。
-                    //   errDeg が低headLiftで大 → カメラ配達ラグ確定。SnapCameraOnFire=true で縮むはず。
-                    Vector3 actualDir = self.GetLookRay().direction.normalized;
-                    Vector3 wantDir   = aimDir.normalized;
-                    float errDeg   = Vector3.Angle(actualDir, wantDir);
-                    float pWant    = Mathf.Asin(Mathf.Clamp(wantDir.y,   -1f, 1f)) * Mathf.Rad2Deg;
-                    float pActual  = Mathf.Asin(Mathf.Clamp(actualDir.y, -1f, 1f)) * Mathf.Rad2Deg;
+                    // ★ ver0.7 診断: 実際の射撃レイ(GetLookRay, ワールド)が狙点をどれだけ外したか。
+                    //   missDist = レイ直線と aimPoint の最短距離。視差が主因なら至近で大 → 修正で≈0。
+                    //   missDist≈0 でも none なら、当たり判定/自己遮蔽/地形が原因(次段の切り分け材料)。
+                    Ray lr = self.GetLookRay();
+                    Vector3 rd = lr.direction.normalized;
+                    float tproj = Vector3.Dot(aimPoint - lr.origin, rd);
+                    Vector3 closest = lr.origin + rd * tproj;
+                    float missDist = Vector3.Distance(closest, aimPoint);
+                    float errDeg  = Vector3.Angle(rd, shotDir.normalized);
+                    float pWant   = Mathf.Asin(Mathf.Clamp(shotDir.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
+                    float pActual = Mathf.Asin(Mathf.Clamp(rd.y,                  -1f, 1f)) * Mathf.Rad2Deg;
 
                     Log.Out(string.Format(
-                        "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} headLift={4:0.00}m aim={5}({6:0.00}m) errDeg={7:0.0} pWant={8:0.0} pAct={9:0.0} -> hit={10}",
-                        threat.Kind, tgt.entityId, d, after, headLift, aimMode, aimLift, errDeg, pWant, pActual, hitDesc));
+                        "[CompanionAI] fire: {0} id={1} d={2:0.0}m mag={3} headLift={4:0.00}m aim={5}({6:0.00}m) missDist={7:0.00}m errDeg={8:0.0} pWant={9:0.0} pAct={10:0.0} ads={11} -> hit={12}",
+                        threat.Kind, tgt.entityId, d, after, headLift, aimMode, aimLift, missDist, errDeg, pWant, pActual, (self.AimingGun ? "on" : "off"), hitDesc));
                 }
                 else if (after == 0) // 空＝リロード待ち（ゲートが自動要求）
                 {
