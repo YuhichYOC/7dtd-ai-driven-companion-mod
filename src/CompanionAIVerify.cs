@@ -3,7 +3,7 @@ using HarmonyLib;
 using UnityEngine;
 
 // =============================================================================
-// Companion AI verify harness — Build v0.6.0 (hit検証+シュータブル・ゲート / フルオート連射)
+// Companion AI verify harness — Build v0.6.1 (hit検証+シュータブル・ゲート / フルオート連射+空リロード修正)
 //   採番方針: 交戦(engage)スライス系列は v0.5.x。tuning/診断/tooling は patch(.1,.2,.3,.4)、
 //   新capability(engage-maneuver/navigation 等)が入る時のみ minor を上げる。
 //   v0.6.0: 発砲前に Voxel.Raycast で射線検証（遮蔽/FF/狙点外しを撃たずホールド, 候補狙点探索）
@@ -123,7 +123,7 @@ namespace CompanionAIVerify
             var harmony = new Harmony("companionai.verify");
             harmony.PatchAll();
             ModCfgFile.Init(_modInstance);   // companion_config.txt を読込（無ければ生成）
-            Log.Out("[CompanionAI] verify harness v0.6.0 loaded (engage[melee+ranged/parallax/ADS/shootable-gate/full-auto] + file-config). F8 to toggle drive / reload config.");
+            Log.Out("[CompanionAI] verify harness v0.6.1 loaded (engage[melee+ranged/parallax/ADS/shootable-gate/full-auto] + file-config). F8 to toggle drive / reload config.");
         }
     }
 
@@ -293,7 +293,7 @@ namespace CompanionAIVerify
         private static string DefaultText()
         {
             return
-"# CompanionAI verify harness config (v0.6.0)\n" +
+"# CompanionAI verify harness config (v0.6.1)\n" +
 "# 変更後、ゲーム内で F8（ドライブ切替）を押すと再読込されます。起動時にも読込。\n" +
 "# bool = true/false (1/0/on/off も可) , float = 小数点は '.'（例 3.0）\n" +
 "\n" +
@@ -606,11 +606,25 @@ namespace CompanionAIVerify
 
             if (fullAuto)
             {
-                // トリガー保持：毎フレーム press（RPM はゲートの Delay が律速）。離しは disengage 時のみ。
-                int before = GetHoldingMeta(self);
-                self.Attack(false);
-                _firePressed = true;
-                FireLog(self, threat, d, aimMode, bodyPart, true, GetHoldingMeta(self), before);
+                int mag = GetHoldingMeta(self);
+                if (mag == 0)
+                {
+                    // ★ v0.6.1 空リロード: リロードは release エッジ(bReleased)が要る
+                    //   (ItemActionRanged:1236 `if (bReleased) … if (CanReload) requestReload`)。
+                    //   フルオートは hold で離さないため bReleased が立たず自動リロードしない。
+                    //   → 空の間だけ release→press を交互に打ってエッジを作り、リロードを発火させる。
+                    //   (CanReload に ADS ゲートは無い＝ItemActionRanged:872。ADS 解除は不要)
+                    if (_firePressed) { self.Attack(true);  _firePressed = false; } // release（bReleased立て）
+                    else              { self.Attack(false); _firePressed = true;  } // press（empty→requestReload）
+                    FireLog(self, threat, d, aimMode, bodyPart, true, GetHoldingMeta(self), mag);
+                }
+                else
+                {
+                    // 弾あり: トリガー保持で RPM 連射（Delay がケイデンスを律速）。離しは disengage 時のみ。
+                    self.Attack(false);
+                    _firePressed = true;
+                    FireLog(self, threat, d, aimMode, bodyPart, true, GetHoldingMeta(self), mag);
+                }
             }
             else
             {
