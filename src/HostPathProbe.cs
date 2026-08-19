@@ -101,8 +101,15 @@ namespace CompanionAIVerify
         internal static float   RepathSec        = 0.5f;           // 再発注の最小間隔
         internal static float   PathSpeed        = 1.5f;           // FindPath へ渡す速度（抽出のみでは表示上の値）
         internal static float   PathTimeoutSec   = 3.0f;           // 発注後この秒数で結果が来なければ打ち切り
-        internal static float   MaxCompanionDist = 60.0f;          // これ以上離れたら発注しない（グリッド外の空振り回避）
-        internal static float   LogThrottleSec   = 0.5f;           // 成功ログの最小間隔（点数変化時は即時）
+        internal static float   MaxCompanionDist = 60.0f;          // これ以上離れたら発注しない。あえて緩く保つ:
+                                                                   //   40〜59m の部分経路を辿って自力接近する自己修復帯域を殺さないため。
+                                                                   //   安全弁は endGap 分類＋スタックタイマー側で持つ（下）。
+        internal static float   LogThrottleSec   = 0.5f;           // 成功ログの最小間隔（状態/点数変化時は即時）
+
+        // endGap 分類（到達判定）とスタック検出。部分経路を「捨てない・到達と同一視しない・状態信号にする」。
+        internal static float   ReachEpsilonM    = 1.5f;           // endGap ≤ これ → REACHED（終端がリーダーに到達）
+        internal static float   StuckMinDeltaM   = 0.5f;           // 進捗とみなす endGap の最小短縮量（ノイズ無視）
+        internal static float   StuckSec         = 3.0f;           // endGap が縮まないままこの秒数 → STUCK
 
         // 診断: フックが走っているか＆ゲート状態を無条件で吐く（Enabled/F9 と独立）。切り分け後は false へ。
         internal static bool    DebugHeartbeat   = true;
@@ -131,6 +138,11 @@ namespace CompanionAIVerify
         private static bool  _awaitingResult    = false;
         private static float _requestTime       = 0f;
         private static float _nextRequestTime   = 0f;
+
+        // endGap 分類 / スタック検出のエピソード状態
+        private static float _bestEndGap        = float.MaxValue;  // この接近エピソードで観測した最小 endGap（進捗の基準線）
+        private static float _lastProgressTime  = 0f;              // 最後に endGap が有意に縮んだ時刻
+        private static string _lastStatus       = "";             // 直近ログした状態（変化時は即ログ）
 
         // ログ絞り込み
         private static int   _lastLoggedN       = int.MinValue;
@@ -202,6 +214,9 @@ namespace CompanionAIVerify
                 _awaitingResult = false;
                 _nextRequestTime = 0f;
                 _lastLoggedN = int.MinValue;
+                _bestEndGap = float.MaxValue;
+                _lastProgressTime = Time.time;
+                _lastStatus = "";
             }
 
             float dist = Vector3.Distance(companion.position, leader.position);
@@ -317,15 +332,52 @@ namespace CompanionAIVerify
             for (int i = 1; i < n; i++) poly += Vector3.Distance(wps[i - 1], wps[i]);
             float endGap = Vector3.Distance(end, leader.position);           // 経路終端がリーダーへ届いているか
 
-            // 絞り込み: 点数変化時は即時、それ以外は時間ゲート
-            bool changed = (n != _lastLoggedN);
-            if (!changed && Time.time < _nextLogTime) return;
-            _lastLoggedN = n;
-            _nextLogTime = Time.time + HostProbeCfg.LogThrottleSec;
+            // --- endGap 分類（到達 / 接近中 / スタック）------------------------------------------
+            //   REACHED     : endGap ≤ ε。終端がリーダーに到達。完全経路。
+            //   APPROACHING : endGap > ε だが有意に縮んでいる（＝部分経路を辿って自己修復中）。辿ってよい。
+            //   STUCK       : endGap > ε かつ StuckSec 秒 縮まない。局所最小/追いつけない/袋小路。要エスカレーション。
+            //   進捗の基準は「このエピソードで観測した最小 endGap(_bestEndGap)」。ノイズ±で誤リセットしない。
+            float now = Time.time;
+            string status;
+            if (endGap <= HostProbeCfg.ReachEpsilonM)
+            {
+                status = "REACHED";
+                _bestEndGap = float.MaxValue;   // エピソードを閉じる（次に離れたら新規接近として再スタート）
+                _lastProgressTime = now;
+            }
+            else
+            {
+                if (endGap < _bestEndGap - HostProbeCfg.StuckMinDeltaM)
+                {
+                    _bestEndGap = endGap;       // 有意に前進 → 基準線更新
+                    _lastProgressTime = now;
+                    status = "APPROACHING";
+                }
+                else if (now - _lastProgressTime > HostProbeCfg.StuckSec)
+                {
+                    status = "STUCK";
+                }
+                else
+                {
+                    status = "APPROACHING";     // 猶予内（まだスタック判定しない）
+                }
+            }
 
+            // スライス2: 抽出した経路＋状態をコンパニオンのクライアントへ送出（送信側で独立スロットル）
+            PathWire.MaybeSendFromHost(companion, wps, status);
+
+            // 絞り込み: 状態変化 or 点数変化は即時、それ以外は時間ゲート
+            bool changed = (status != _lastStatus) || (n != _lastLoggedN);
+            if (!changed && now < _nextLogTime) return;
+            _lastStatus = status;
+            _lastLoggedN = n;
+            _nextLogTime = now + HostProbeCfg.LogThrottleSec;
+
+            float sinceProgress = now - _lastProgressTime;
             Log.Out(
-                $"[CompanionAI][host] path OK comp='{companion.PlayerDisplayName}'({companion.entityId}) " +
+                $"[CompanionAI][host] path {status} comp='{companion.PlayerDisplayName}'({companion.entityId}) " +
                 $"pts={n} straight={straight:0.0}m poly={poly:0.0}m endGap={endGap:0.0}m " +
+                $"bestGap={(_bestEndGap == float.MaxValue ? 0f : _bestEndGap):0.0}m sinceProg={sinceProgress:0.0}s " +
                 $"start=({start.x:0.0},{start.y:0.0},{start.z:0.0}) end=({end.x:0.0},{end.y:0.0},{end.z:0.0})");
         }
 
@@ -334,6 +386,7 @@ namespace CompanionAIVerify
             if (Time.time < _nextLogTime) return;
             _nextLogTime = Time.time + HostProbeCfg.LogThrottleSec;
             _lastLoggedN = int.MinValue;
+            _lastStatus = "FAIL";
             Log.Out($"[CompanionAI][host] path FAIL comp={companion.entityId} d={dist:0.0}m : {reason} " +
                     "(グリッド76m外 / 未接続 / 生成失敗のいずれか)");
         }
@@ -343,6 +396,9 @@ namespace CompanionAIVerify
             _awaitingResult = false;
             _nextRequestTime = 0f;
             _lastLoggedN = int.MinValue;
+            _bestEndGap = float.MaxValue;
+            _lastProgressTime = Time.time;
+            _lastStatus = "";
             // 付与した navigator はあえて残す（player では inert。探索中の null 化による worker NRE を避ける）。
         }
     }
