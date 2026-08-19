@@ -26,12 +26,18 @@ namespace CompanionAIVerify
     // --- Tunables (companion_config.txt で上書き可能) --------------------------
     internal static class Cfg
     {
-        internal static string  ModVersion                 = "0.7.2";
+        internal static string  ModVersion                 = "0.8.0";
 
         internal static bool    Enabled                    = false;          // 起動時OFF。F8でトグル(ファイル対象外)
         internal const  KeyCode ToggleKey                  = KeyCode.F8;
         internal static float   StandoffMeters             = 3.0f;           // これ以内なら停止
         internal static float   RunMeters                  = 8.0f;           // これ以上離れたら走る
+
+        // --- 経路追従（navigation スライス3） ---
+        internal static bool    PathFollow                 = true;           // 受信経路があればWP追従、無ければ直線
+        internal static float   WaypointArriveM            = 1.0f;           // WP到達半径(水平)
+        internal static float   WaypointHeightTolM         = 1.5f;           // WP到達の高さ許容
+        internal static float   PathStaleSec               = 3.0f;           // これより古い経路は無視し直線へ戻す
 
         internal static float   ThreatScanRadius           = 20.0f;          // 脅威走査半径(m)
         internal static bool    CombatMode                 = true;           // true=脅威を向く/叩く

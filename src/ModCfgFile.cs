@@ -108,6 +108,10 @@ namespace CompanionAIVerify
                 case "FullAutoHold":               return TryBool(val, ref Cfg.FullAutoHold);
                 case "StandoffMeters":             return TryF(val, ref Cfg.StandoffMeters);
                 case "RunMeters":                  return TryF(val, ref Cfg.RunMeters);
+                case "PathFollow":                 return TryBool(val, ref Cfg.PathFollow);
+                case "WaypointArriveM":            return TryF(val, ref Cfg.WaypointArriveM);
+                case "WaypointHeightTolM":         return TryF(val, ref Cfg.WaypointHeightTolM);
+                case "PathStaleSec":               return TryF(val, ref Cfg.PathStaleSec);
                 case "ThreatScanRadius":           return TryF(val, ref Cfg.ThreatScanRadius);
                 case "LogThrottleSec":             return TryF(val, ref Cfg.LogThrottleSec);
                 case "ReachBuffer":                return TryF(val, ref Cfg.ReachBuffer);

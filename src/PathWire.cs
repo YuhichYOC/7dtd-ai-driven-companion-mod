@@ -244,7 +244,10 @@ namespace CompanionAIVerify
                     $"pts={pts.Count}(exp {b.n}) {verdict} chunks={b.total} " +
                     $"start=({s.x:0.0},{s.y:0.0},{s.z:0.0}) end=({e.x:0.0},{e.y:0.0},{e.z:0.0})");
 
-            // 受信した pts はスライス3（クライアント追従）の入力になる。ここではログのみ。
+            // スライス3: 受信経路を追従ステートへ渡す（F8ドライバの follow が読む）。
+            //   COUNT-MISMATCH は破損の可能性があるので追従へは渡さない（直線フォールバックのまま）。
+            if (verdict == "OK" && pts.Count > 0)
+                PathFollowState.SetPath(pts.ToArray(), b.status);
         }
 
         private static void PruneStale()

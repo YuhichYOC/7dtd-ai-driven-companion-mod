@@ -78,7 +78,25 @@ namespace CompanionAIVerify
             }
             else
             {
-                Steer(self, moveTarget: leader.position, lookDir: lookDir, running: dist > Cfg.RunMeters);
+                // 既定は直線でリーダーへ。経路が届いていれば中間ウェイポイントへ向かう（navigation スライス3）。
+                Vector3 moveTarget = leader.position;
+                bool pathActive = false;
+                if (Cfg.PathFollow &&
+                    PathFollowState.TryGetMoveTarget(self.position, Cfg.WaypointArriveM, Cfg.WaypointHeightTolM,
+                                                     Cfg.PathStaleSec, out Vector3 wpTarget, out string _pstatus))
+                {
+                    moveTarget = wpTarget;
+                    pathActive = true;
+                }
+
+                // 戦闘中は脅威を向く(既存優先)。非戦闘の経路追従中のみ進行方向を向く。
+                if (!(Cfg.CombatMode && threat.Valid) && pathActive)
+                {
+                    Vector3 tdir = moveTarget - self.position; tdir.y = 0f;
+                    if (tdir.sqrMagnitude > 0.001f) lookDir = tdir;
+                }
+
+                Steer(self, moveTarget: moveTarget, lookDir: lookDir, running: dist > Cfg.RunMeters);
             }
 
             // --- 交戦オーバーレイ（Section E）: 最後に実行 ---

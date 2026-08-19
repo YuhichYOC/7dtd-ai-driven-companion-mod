@@ -1,4 +1,4 @@
-# CompanionAI verify harness config (v0.7.2)
+# CompanionAI verify harness config (v0.8.0)
 # 変更後、ゲーム内で F8（ドライブ切替）を押すと再読込されます。起動時にも読込。
 # bool = true/false (1/0/on/off も可) , float = 小数点は '.'（例 3.0）
 
@@ -9,6 +9,12 @@ EnableRangedFire           = true
 # --- 追従 ---
 StandoffMeters             = 3.0
 RunMeters                  = 8.0
+
+# --- 経路追従（navigation スライス3）---
+PathFollow                 = true
+WaypointArriveM            = 1.0
+WaypointHeightTolM         = 1.5
+PathStaleSec               = 3.0
 
 # --- 脅威検知 ---
 ThreatScanRadius           = 20.0
