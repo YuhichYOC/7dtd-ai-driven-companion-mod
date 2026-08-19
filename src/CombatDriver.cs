@@ -56,6 +56,8 @@ namespace CompanionAIVerify
             float reach = GetAttackReach(self);
             float d     = Mathf.Sqrt(threat.DistSq);
 
+            EngageRange.LogTick(self, threat.Target);
+
             // ★ v0.7(A): 交戦距離に応じた武器自動切替。切替した frame は settle のため即 return。
             WeaponSelector.RefreshLoadout(self, force: false);
             if (Cfg.AutoWeaponSwitch && WeaponSelector.MaybeSwitch(self, d)) return;

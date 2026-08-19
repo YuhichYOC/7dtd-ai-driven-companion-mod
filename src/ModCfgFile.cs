@@ -141,6 +141,8 @@ namespace CompanionAIVerify
                 case "ToolbeltStowIntervalSec":    return TryF(val, ref Cfg.ToolbeltStowIntervalSec);
                 case "PickupRadius":               return TryF(val, ref Cfg.PickupRadius);
                 case "PickupScanIntervalSec":      return TryF(val, ref Cfg.PickupScanIntervalSec);
+                case "LogEngageRange":             return TryBool(val, ref Cfg.LogEngageRange);
+                case "EngageLogMinInterval":       return TryF(val, ref Cfg.EngageLogMinInterval);
                 default: return false;
             }
         }

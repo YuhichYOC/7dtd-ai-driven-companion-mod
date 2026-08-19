@@ -57,3 +57,7 @@ AutoPickupLeaderDrops      = true
 PickupRadius               = 6.0
 PickupScanIntervalSec      = 0.5
 PickupUnowned              = false
+
+# --- 交戦マニューバ（v0.8.0） ---
+LogEngageRange             = true
+EngageLogMinInterval       = 0.5

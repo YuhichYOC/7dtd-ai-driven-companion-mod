@@ -105,5 +105,9 @@ namespace CompanionAIVerify
         internal static string  MeleeWeaponTags            = "";               // include（タグ, CSV）
         internal static string  RangedWeaponTags           = "";               // include（タグ, CSV）
         internal static string  WeaponExcludeTags          = "";               // 除外（タグ, CSV）
+
+        // v0.8.0: 交戦マニューバ
+        internal static bool    LogEngageRange             = true;   // Slice A 観察用。B に入るとき false でOK
+        internal static float   EngageLogMinInterval       = 0.5f;   // ログ時間ゲート(秒)
     }
 }
