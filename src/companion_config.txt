@@ -69,6 +69,8 @@ EngageLogMinInterval       = 0.5
 # 格闘オートアプローチ: リーチ外の交戦中脅威が MaxDistance 内なら自動接近
 MeleeAutoApproach          = true
 MeleeApproachMaxDistance   = 6.0
+# 接近の停止距離をリーチより内側へ(reach-StepIn)。リーチ端張り付きの空振り対策。大きいほど踏み込む
+MeleeApproachStepIn        = 0.7
 # 照準補正(A): SetAttackTarget で近接レイをチェストへ自動補正
 MeleeAimAssist             = true
 MeleeAimAssistHoldTicks    = 30

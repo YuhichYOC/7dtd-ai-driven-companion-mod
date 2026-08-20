@@ -93,7 +93,7 @@ namespace CompanionAIVerify
                 $"HeadLift={Cfg.HeadAimMinLift} MaxEngage={Cfg.RangedMaxEngageMeters} FireInt={Cfg.RangedFireIntervalSec} " +
                 $"RangeSafety={Cfg.RangedRangeSafety} FFGate={Cfg.FriendlyFireGate} FFMargin={Cfg.FriendlyFireMargin} " +
                 $"ReachBuf={Cfg.ReachBuffer} LogThr={Cfg.LogThrottleSec} " +
-                $"| Approach={Cfg.MeleeAutoApproach} ApproachMax={Cfg.MeleeApproachMaxDistance} " +
+                $"| Approach={Cfg.MeleeAutoApproach} ApproachMax={Cfg.MeleeApproachMaxDistance} StepIn={Cfg.MeleeApproachStepIn} " +
                 $"AimAssist={Cfg.MeleeAimAssist} PinLeader={Cfg.DebugPinTargetToLeader} Freeze={Cfg.DebugFreezeHostiles}");
         }
 
@@ -152,6 +152,7 @@ namespace CompanionAIVerify
                 case "EngageLogMinInterval":       return TryF(val, ref Cfg.EngageLogMinInterval);
                 case "MeleeAutoApproach":          return TryBool(val, ref Cfg.MeleeAutoApproach);
                 case "MeleeApproachMaxDistance":   return TryF(val, ref Cfg.MeleeApproachMaxDistance);
+                case "MeleeApproachStepIn":        return TryF(val, ref Cfg.MeleeApproachStepIn);
                 case "MeleeAimAssist":             return TryBool(val, ref Cfg.MeleeAimAssist);
                 case "MeleeAimAssistHoldTicks":    return TryInt(val, ref Cfg.MeleeAimAssistHoldTicks);
                 case "DebugPinTargetToLeader":     return TryBool(val, ref Cfg.DebugPinTargetToLeader);
@@ -254,6 +255,8 @@ namespace CompanionAIVerify
                 $"# 格闘オートアプローチ: リーチ外の交戦中脅威が MaxDistance 内なら自動接近\n" +
                 $"MeleeAutoApproach          = true\n" +
                 $"MeleeApproachMaxDistance   = 6.0\n" +
+                $"# 接近の停止距離をリーチより内側へ(reach-StepIn)。リーチ端張り付きの空振り対策。大きいほど踏み込む\n" +
+                $"MeleeApproachStepIn        = 0.7\n" +
                 $"# 照準補正(A): SetAttackTarget で近接レイをチェストへ自動補正\n" +
                 $"MeleeAimAssist             = true\n" +
                 $"MeleeAimAssistHoldTicks    = 30\n" +

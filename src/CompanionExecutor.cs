@@ -130,8 +130,14 @@ namespace CompanionAIVerify
             float reach = (er.range > 0.01f) ? er.range : 2.0f;
             float d     = Mathf.Sqrt(threat.DistSq);
 
-            // リーチ内なら接近不要（その場で振る）。approachMax 外なら追わない（リーダーから離れ過ぎ防止）。
-            if (d <= reach || d > Cfg.MeleeApproachMaxDistance) return false;
+            // 停止距離はリーチより StepIn ぶん内側に置く。リーチ端(d≈reach)に張り付くと d_eyeChest>Range になりがちで
+            // 空振りが混ざり、ターゲットの揺れで「振れるが届かない帯(reach〜reach+ReachBuffer)」に戻ってしまう。
+            // 少し踏み込ませて d_eyeChest<Range の内側で安定させ、inRange を True に保つ（スイングの間欠発火＝スローペースも解消）。
+            // 下限クランプ: StepIn を過大設定してもゾンビへ突っ込まないよう最低 0.8m は空ける。
+            float stopDist = Mathf.Max(0.8f, reach - Cfg.MeleeApproachStepIn);
+
+            // 停止距離内なら接近不要（その場で振る）。approachMax 外なら追わない（リーダーから離れ過ぎ防止）。
+            if (d <= stopDist || d > Cfg.MeleeApproachMaxDistance) return false;
 
             Vector3 lookDir = threat.Target.position - self.position; lookDir.y = 0f;
             Steer(self, moveTarget: threat.Target.position, lookDir: lookDir, running: false); // 数m の詰めは歩き（照準安定）

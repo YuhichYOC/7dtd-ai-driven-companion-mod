@@ -119,6 +119,7 @@ namespace CompanionAIVerify
         //   ・照準補正: 交戦中 attackTarget を直接代入し、近接レイをチェストへ自動補正（ItemActionDynamic:327-330）。FaceTarget3D 精度に非依存化。client-safe（SetAttackTarget は entityDistributer null で NRE のため不使用）。
         internal static bool    MeleeAutoApproach          = true;   // 格闘オートアプローチ ON/OFF
         internal static float   MeleeApproachMaxDistance   = 6.0f;   // コンパニオン中心、この距離以内の脅威のみ接近対象(m)。小さめ推奨（リーダーから離れ過ぎ防止）
+        internal static float   MeleeApproachStepIn        = 0.7f;   // v0.8(D後): 接近の停止距離をリーチより内側へ(reach-StepIn)。リーチ端張り付きの空振りを防ぐ。大きいほど踏み込む
         internal static bool    MeleeAimAssist             = true;   // (A) attackTarget 直接代入による近接チェスト自動補正（client-safe）
         internal static int     MeleeAimAssistHoldTicks    = 30;     // ※現状未使用: client では attackTargetTime を使えない（失効パスが entityDistributer.SendPacket を踏む）。将来server側実装用に予約
 
