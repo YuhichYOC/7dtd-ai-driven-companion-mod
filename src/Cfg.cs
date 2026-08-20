@@ -52,6 +52,8 @@ namespace CompanionAIVerify
         internal static bool    EnableRangedFire           = true;       // false で従来の deferred ログのみ
         internal static float   RangedMaxEngageMeters      = 18.0f;      // これ以内の脅威にのみ発砲(m)。グローバル上限（挙動キャップ）
         internal static float   RangedRangeSafety          = 0.85f;      // v0.8(C): 武器の実効射程(GetRange)にこの係数を掛けた距離までしか撃たない。弾が届かない距離での空撃ちを防ぐ
+        internal static bool    FriendlyFireGate           = true;       // v0.8(D): 射線帯に友軍(他プレイヤー＋allyドローン)が居れば発砲しない
+        internal static float   FriendlyFireMargin         = 0.4f;       // v0.8(D): 友軍AABBの片側膨張(m)。拡散＋コライダー幅ぶんの余裕。大きいほど安全側(撃たない)
         internal static float   RangedFireIntervalSec      = 0.4f;       // 発砲ケイデンス(≒2.5発/秒)
 
         // --- ハイブリッド狙点（ver0.5） ---

@@ -19,6 +19,7 @@
 *
 */
 
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CompanionAIVerify
@@ -244,6 +245,22 @@ namespace CompanionAIVerify
                 return;
             }
 
+            // ★ v0.8(D): 友軍射線ガード。実射(fireShot)と同一原点(GetLookRay)＋同一狙点方向で、
+            //   対象より手前の射線帯に友軍（他プレイヤー＋allyドローン）が居れば、狙点が通っていても発砲しない。
+            //   既存の shootable(狙点探索/遮蔽)は「頭が1点通れば撃つ」で緩く、拡散＋原点差で友軍に当たっていた
+            //   （FF漏れ実測）。ここで実射ラインを直接検証して塞ぐ。
+            if (Cfg.FriendlyFireGate &&
+                FriendlyInLineOfFire(self, aimPoint, out int ffBlockerId))
+            {
+                ReleaseFireIfPressed(self);
+                if (Time.time >= _nextHoldLogTime)
+                {
+                    _nextHoldLogTime = Time.time + Cfg.LogThrottleSec;
+                    Log.Out($"[CompanionAI] hold: {threat.Kind} id={tgt.entityId} d={d:0.0}m reason=FF id={ffBlockerId}");
+                }
+                return;
+            }
+
             // ★ (2) 発砲準備：ADS＋カメラを狙点へスナップ
             Vector3 shotDir = aimPoint - camWorld;
             SetAds(self, true);
@@ -306,6 +323,59 @@ namespace CompanionAIVerify
             else if (after == 0) { if (_lastMeta != 0) Log.Out("[CompanionAI] fire: empty — waiting for auto-reload."); }
             else if (_lastMeta >= 0 && after > _lastMeta) Log.Out($"[CompanionAI] reload: done, mag={after}");
             _lastMeta = after;
+        }
+
+        // ★ v0.8(D): 友軍射線ガード。
+        //   実射 fireShot は GetLookRay().origin(=目, EntityAlive:5536)から狙点方向へ拡散付きで飛ぶ。
+        //   ここでは同一原点→aimPoint の直線に対し、対象より手前(dist<狙点距離)で友軍のAABB(膨張)に
+        //   交差するものが1体でもあればホールドする。友軍=自分以外の生存プレイヤー＋allyドローン。
+        //   膨張量 FriendlyFireMargin は拡散＋コライダー幅ぶんの余裕（片側マージン）。
+        private static readonly List<EntityAlive> _ffFriendlies = new List<EntityAlive>();
+
+        private static bool FriendlyInLineOfFire(EntityPlayerLocal self, Vector3 aimPoint, out int blockerId)
+        {
+            blockerId = -1;
+            World world = self.world;
+            if (world == null) return false;
+
+            Vector3 origin = self.GetLookRay().origin;          // 実射と同一原点
+            Vector3 dir    = aimPoint - origin;
+            float   dlen   = dir.magnitude;                     // 対象狙点までの距離（この手前だけ問題）
+            if (dlen < 1e-4f) return false;
+            Ray shotRay = new Ray(origin, dir / dlen);
+            float margin = Cfg.FriendlyFireMargin;
+
+            // --- 友軍集合を集める ---
+            _ffFriendlies.Clear();
+            var players = world.GetPlayers();                   // リモートのリーダーも含む（FindNearestLeader と同経路）
+            if (players != null)
+                for (int i = 0; i < players.Count; i++)
+                {
+                    EntityPlayer p = players[i];
+                    if (p != null && p != self && !p.IsDead()) _ffFriendlies.Add(p);
+                }
+            EntityPlayer selfP = self as EntityPlayer;
+            var ents = world.Entities != null ? world.Entities.list : null;
+            if (ents != null)
+                for (int i = 0; i < ents.Count; i++)
+                {
+                    // allyドローンのみ友軍に含める（fireShot:1449 と同じ isAlly 判定）
+                    if (ents[i] is EntityDrone drone && !drone.IsDead() && drone.isAlly(selfP))
+                        _ffFriendlies.Add(drone);
+                }
+
+            // --- 射線帯の交差判定 ---
+            for (int i = 0; i < _ffFriendlies.Count; i++)
+            {
+                Bounds b = _ffFriendlies[i].boundingBox;        // world AABB (Entity.boundingBox)
+                b.Expand(margin * 2f);                          // Expand は総量増加＝片側 margin
+                if (b.IntersectRay(shotRay, out float dist) && dist > 0f && dist < dlen)
+                {
+                    blockerId = _ffFriendlies[i].entityId;
+                    return true;
+                }
+            }
+            return false;
         }
 
         // ★ シュータブル解決: 候補狙点(頭/胴中心/腹)を順に自前レイキャストし、

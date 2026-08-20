@@ -30,6 +30,9 @@ HeadAimMinLift             = 1.2
 RangedMaxEngageMeters      = 18.0
 # 武器の実効射程×この係数までしか撃たない（弾が届かない距離での空撃ち防止）
 RangedRangeSafety          = 0.85
+# 射線帯に友軍(他プレイヤー+allyドローン)が居れば発砲しない。Margin は友軍AABBの片側膨張(m)
+FriendlyFireGate           = true
+FriendlyFireMargin         = 0.4
 RangedFireIntervalSec      = 0.4
 
 # --- カメラ/視差/ADS（A/B対象）---

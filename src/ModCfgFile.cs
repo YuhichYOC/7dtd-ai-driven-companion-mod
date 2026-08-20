@@ -91,7 +91,7 @@ namespace CompanionAIVerify
                 $"AimFromCam={Cfg.AimFromCameraOrigin} ADS={Cfg.AimDownSightsOnEngage} ForceFPV={Cfg.ForceFirstPerson} | " +
                 $"Standoff={Cfg.StandoffMeters} Run={Cfg.RunMeters} ScanR={Cfg.ThreatScanRadius} " +
                 $"HeadLift={Cfg.HeadAimMinLift} MaxEngage={Cfg.RangedMaxEngageMeters} FireInt={Cfg.RangedFireIntervalSec} " +
-                $"RangeSafety={Cfg.RangedRangeSafety} " +
+                $"RangeSafety={Cfg.RangedRangeSafety} FFGate={Cfg.FriendlyFireGate} FFMargin={Cfg.FriendlyFireMargin} " +
                 $"ReachBuf={Cfg.ReachBuffer} LogThr={Cfg.LogThrottleSec} " +
                 $"| Approach={Cfg.MeleeAutoApproach} ApproachMax={Cfg.MeleeApproachMaxDistance} " +
                 $"AimAssist={Cfg.MeleeAimAssist} PinLeader={Cfg.DebugPinTargetToLeader} Freeze={Cfg.DebugFreezeHostiles}");
@@ -121,6 +121,8 @@ namespace CompanionAIVerify
                 case "HeadAimMinLift":             return TryF(val, ref Cfg.HeadAimMinLift);
                 case "RangedMaxEngageMeters":      return TryF(val, ref Cfg.RangedMaxEngageMeters);
                 case "RangedRangeSafety":          return TryF(val, ref Cfg.RangedRangeSafety);
+                case "FriendlyFireGate":           return TryBool(val, ref Cfg.FriendlyFireGate);
+                case "FriendlyFireMargin":         return TryF(val, ref Cfg.FriendlyFireMargin);
                 case "RangedFireIntervalSec":      return TryF(val, ref Cfg.RangedFireIntervalSec);
                 case "AutoWeaponSwitch":           return TryBool(val, ref Cfg.AutoWeaponSwitch);
                 case "AutoStowWeaponsToToolbelt":  return TryBool(val, ref Cfg.AutoStowWeaponsToToolbelt);
@@ -213,6 +215,9 @@ namespace CompanionAIVerify
                 $"RangedMaxEngageMeters      = 18.0\n" +
                 $"# 武器の実効射程×この係数までしか撃たない（弾が届かない距離での空撃ち防止）\n" +
                 $"RangedRangeSafety          = 0.85\n" +
+                $"# 射線帯に友軍(他プレイヤー+allyドローン)が居れば発砲しない。Margin は友軍AABBの片側膨張(m)\n" +
+                $"FriendlyFireGate           = true\n" +
+                $"FriendlyFireMargin         = 0.4\n" +
                 $"RangedFireIntervalSec      = 0.4\n" +
                 $"\n" +
                 $"# --- カメラ/視差/ADS（A/B対象）---\n" +
