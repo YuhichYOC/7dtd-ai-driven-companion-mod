@@ -91,6 +91,7 @@ namespace CompanionAIVerify
                 $"AimFromCam={Cfg.AimFromCameraOrigin} ADS={Cfg.AimDownSightsOnEngage} ForceFPV={Cfg.ForceFirstPerson} | " +
                 $"Standoff={Cfg.StandoffMeters} Run={Cfg.RunMeters} ScanR={Cfg.ThreatScanRadius} " +
                 $"HeadLift={Cfg.HeadAimMinLift} MaxEngage={Cfg.RangedMaxEngageMeters} FireInt={Cfg.RangedFireIntervalSec} " +
+                $"RangeSafety={Cfg.RangedRangeSafety} " +
                 $"ReachBuf={Cfg.ReachBuffer} LogThr={Cfg.LogThrottleSec} " +
                 $"| Approach={Cfg.MeleeAutoApproach} ApproachMax={Cfg.MeleeApproachMaxDistance} " +
                 $"AimAssist={Cfg.MeleeAimAssist} PinLeader={Cfg.DebugPinTargetToLeader} Freeze={Cfg.DebugFreezeHostiles}");
@@ -119,6 +120,7 @@ namespace CompanionAIVerify
                 case "ReachBuffer":                return TryF(val, ref Cfg.ReachBuffer);
                 case "HeadAimMinLift":             return TryF(val, ref Cfg.HeadAimMinLift);
                 case "RangedMaxEngageMeters":      return TryF(val, ref Cfg.RangedMaxEngageMeters);
+                case "RangedRangeSafety":          return TryF(val, ref Cfg.RangedRangeSafety);
                 case "RangedFireIntervalSec":      return TryF(val, ref Cfg.RangedFireIntervalSec);
                 case "AutoWeaponSwitch":           return TryBool(val, ref Cfg.AutoWeaponSwitch);
                 case "AutoStowWeaponsToToolbelt":  return TryBool(val, ref Cfg.AutoStowWeaponsToToolbelt);
@@ -209,6 +211,8 @@ namespace CompanionAIVerify
                 $"\n" +
                 $"# --- 発砲 ---\n" +
                 $"RangedMaxEngageMeters      = 18.0\n" +
+                $"# 武器の実効射程×この係数までしか撃たない（弾が届かない距離での空撃ち防止）\n" +
+                $"RangedRangeSafety          = 0.85\n" +
                 $"RangedFireIntervalSec      = 0.4\n" +
                 $"\n" +
                 $"# --- カメラ/視差/ADS（A/B対象）---\n" +

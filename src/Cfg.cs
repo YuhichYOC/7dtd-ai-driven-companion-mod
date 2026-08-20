@@ -50,7 +50,8 @@ namespace CompanionAIVerify
 
         // --- 発砲スライス（遠距離, ver0.4） ---
         internal static bool    EnableRangedFire           = true;       // false で従来の deferred ログのみ
-        internal static float   RangedMaxEngageMeters      = 18.0f;      // これ以内の脅威にのみ発砲(m)
+        internal static float   RangedMaxEngageMeters      = 18.0f;      // これ以内の脅威にのみ発砲(m)。グローバル上限（挙動キャップ）
+        internal static float   RangedRangeSafety          = 0.85f;      // v0.8(C): 武器の実効射程(GetRange)にこの係数を掛けた距離までしか撃たない。弾が届かない距離での空撃ちを防ぐ
         internal static float   RangedFireIntervalSec      = 0.4f;       // 発砲ケイデンス(≒2.5発/秒)
 
         // --- ハイブリッド狙点（ver0.5） ---

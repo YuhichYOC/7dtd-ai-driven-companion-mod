@@ -182,9 +182,25 @@ namespace CompanionAIVerify
                 return;
             }
 
-            if (d > Cfg.RangedMaxEngageMeters)
+            // ★ v0.8(C): 射程ゲート。グローバル上限(RangedMaxEngageMeters)に加え、
+            //   武器固有の実効射程でも「弾が届かない距離」を弾く。fireMax = min(グローバル上限, 実効射程×安全係数)。
+            //   実効射程 = EngageRange.Read().range（ranged では GetRange()＝MaxRange 適用後の発射射程, ItemActionRanged:1376）。
+            //   Slice A 実測で shotgun range≈10 なのに d≈20 で撃って弾が届かない問題を解消する。
+            //   d は feet-to-feet、実際の弾は camera→aimPoint なので安全係数(既定0.85)で余裕を持たせる。
+            float fireMax = Cfg.RangedMaxEngageMeters;
+            EngageRange.Info erC = EngageRange.Read(self);
+            if (erC.valid && erC.isRanged && erC.range > 0.01f)
+                fireMax = Mathf.Min(fireMax, erC.range * Cfg.RangedRangeSafety);
+
+            if (d > fireMax)
             {
                 ReleaseFireIfPressed(self);
+                if (Time.time >= _nextHoldLogTime)
+                {
+                    _nextHoldLogTime = Time.time + Cfg.LogThrottleSec;
+                    Log.Out($"[CompanionAI] hold: {threat.Kind} id={threat.Target.entityId} d={d:0.0}m > fireMax={fireMax:0.0}m " +
+                            $"(range={erC.range:0.0} x{Cfg.RangedRangeSafety:0.00}, cap={Cfg.RangedMaxEngageMeters:0.0})");
+                }
                 return;
             }
 
