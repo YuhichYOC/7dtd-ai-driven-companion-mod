@@ -1,4 +1,4 @@
-# CompanionAI verify harness config (v0.8.0)
+# CompanionAI verify harness config (v0.8.1)
 # 変更後、ゲーム内で F8（ドライブ切替）を押すと再読込されます。起動時にも読込。
 # bool = true/false (1/0/on/off も可) , float = 小数点は '.'（例 3.0）
 
@@ -34,6 +34,13 @@ RangedRangeSafety          = 0.85
 FriendlyFireGate           = true
 FriendlyFireMargin         = 0.4
 RangedFireIntervalSec      = 0.4
+
+# --- 弓/クロスボウ引き絞り（ItemActionCatapult, v0.8.1）---
+# press でチャージ開始→フルドロー(m_MaxStrainTime)×Fraction まで引く→release で発射。
+# false にすると弓を撃たない（ドローなしでは矢が飛ばないためホールド）。
+BowChargeEnabled           = true
+# フルドローの何割まで引くか。strain は Clamp01 されないため 1.0 未満でオーバーチャージ回避（0.90-0.98 推奨）
+BowDrawFraction            = 0.95
 
 # --- カメラ/視差/ADS（A/B対象）---
 ForceFirstPerson           = false

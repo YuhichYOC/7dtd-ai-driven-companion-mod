@@ -93,6 +93,7 @@ namespace CompanionAIVerify
                 $"HeadLift={Cfg.HeadAimMinLift} MaxEngage={Cfg.RangedMaxEngageMeters} FireInt={Cfg.RangedFireIntervalSec} " +
                 $"RangeSafety={Cfg.RangedRangeSafety} FFGate={Cfg.FriendlyFireGate} FFMargin={Cfg.FriendlyFireMargin} " +
                 $"ReachBuf={Cfg.ReachBuffer} LogThr={Cfg.LogThrottleSec} " +
+                $"Bow={Cfg.BowChargeEnabled} BowFrac={Cfg.BowDrawFraction} " +
                 $"| Approach={Cfg.MeleeAutoApproach} ApproachMax={Cfg.MeleeApproachMaxDistance} StepIn={Cfg.MeleeApproachStepIn} " +
                 $"AimAssist={Cfg.MeleeAimAssist} PinLeader={Cfg.DebugPinTargetToLeader} Freeze={Cfg.DebugFreezeHostiles}");
         }
@@ -124,6 +125,9 @@ namespace CompanionAIVerify
                 case "FriendlyFireGate":           return TryBool(val, ref Cfg.FriendlyFireGate);
                 case "FriendlyFireMargin":         return TryF(val, ref Cfg.FriendlyFireMargin);
                 case "RangedFireIntervalSec":      return TryF(val, ref Cfg.RangedFireIntervalSec);
+                // ★ [bow] 弓/クロスボウ引き絞り（v0.8.1）
+                case "BowChargeEnabled":           return TryBool(val, ref Cfg.BowChargeEnabled);
+                case "BowDrawFraction":            return TryF(val, ref Cfg.BowDrawFraction);
                 case "AutoWeaponSwitch":           return TryBool(val, ref Cfg.AutoWeaponSwitch);
                 case "AutoStowWeaponsToToolbelt":  return TryBool(val, ref Cfg.AutoStowWeaponsToToolbelt);
                 case "StowDynamicMelee":           return TryBool(val, ref Cfg.StowDynamicMelee);
@@ -221,6 +225,13 @@ namespace CompanionAIVerify
                 $"FriendlyFireMargin         = 0.4\n" +
                 $"RangedFireIntervalSec      = 0.4\n" +
                 $"\n" +
+                $"# --- 弓/クロスボウ引き絞り（ItemActionCatapult, v0.8.1）---\n" +
+                $"# press でチャージ開始→フルドロー(m_MaxStrainTime)×Fraction まで引く→release で発射。\n" +
+                $"# false にすると弓を撃たない（ドローなしでは矢が飛ばないためホールド）。\n" +
+                $"BowChargeEnabled           = true\n" +
+                $"# フルドローの何割まで引くか。strain は Clamp01 されないため 1.0 未満でオーバーチャージ回避（0.90-0.98 推奨）\n" +
+                $"BowDrawFraction            = 0.95\n" +
+                $"\n" +
                 $"# --- カメラ/視差/ADS（A/B対象）---\n" +
                 $"ForceFirstPerson           = false\n" +
                 $"SnapCameraOnFire           = true\n" +
@@ -231,7 +242,7 @@ namespace CompanionAIVerify
                 $"RequireShootable           = true\n" +
                 $"FullAutoHold               = true\n" +
                 $"\n" +
-                $"# --- 武器自動切替（v0.7(A)）---" +
+                $"# --- 武器自動切替（v0.7(A)）---\n" +
                 $"AutoWeaponSwitch           = true\n" +
                 $"SwitchToMeleeMeters        = 3.5\n" +
                 $"SwitchToRangedMeters       = 5.5\n" +

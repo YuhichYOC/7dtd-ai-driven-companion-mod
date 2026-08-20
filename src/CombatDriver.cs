@@ -40,6 +40,13 @@ namespace CompanionAIVerify
         private static bool               _adsOn;              // ADS(サイト覗き)状態。変化時のみトグル
         private static float              _nextHoldLogTime;    // ホールド理由ログの throttle
 
+        // ★ [bow] 弓/クロスボウ(ItemActionCatapult)ドロー状態。
+        //   press でチャージ開始→m_MaxStrainTime×BowDrawFraction 経過→release で発射。
+        //   ゲーム側 m_bActivated / m_ActivateTime を「状態の信頼源」にして同期する（自前タイマーを二重に持たない）。
+        private static bool               _bowDrawing;         // ドロー中（ゲーム側 m_bActivated と同期）
+        private static float              _bowNextTry;         // 発射直後の再ドロー抑制（連射律速自体はゲーム Delay: Catapult:109 が担保）
+        private static float              _nextBowLogTime;     // 弓ログ throttle
+
         // シュータブル候補狙点の再利用バッファ（毎フレーム alloc 回避）
         private static readonly Vector3[] _candPts = new Vector3[3];
         private static readonly string[]  _candNm  = new string[3];
@@ -62,7 +69,13 @@ namespace CompanionAIVerify
 
             // ★ v0.7(A): 交戦距離に応じた武器自動切替。切替した frame は settle のため即 return。
             WeaponSelector.RefreshLoadout(self, force: false);
-            if (Cfg.AutoWeaponSwitch && WeaponSelector.MaybeSwitch(self, d)) return;
+            if (Cfg.AutoWeaponSwitch && WeaponSelector.MaybeSwitch(self, d))
+            {
+                // ★ [bow] 切替で武器が変わる前に、押下中のトリガー/ドローを安全開放する。
+                //   （弓ドロー中は release=発射になるため、ここを通さないと切替の瞬間に暴発しうる）。
+                ReleaseFireIfPressed(self);
+                return;
+            }
 
             bool inRange = d <= reach + Cfg.ReachBuffer;
 
@@ -136,6 +149,15 @@ namespace CompanionAIVerify
         // 遠距離のトリガーも安全に開放（脅威消失/無効化/切替時に呼ぶ）。ADSも解除。
         internal static void ReleaseFireIfPressed(EntityPlayerLocal self)
         {
+            // ★ [bow] 弓ドロー中は release=発射になる。開放要求は「キャンセル（矢を消費しない引き戻し）」へ
+            //   振り替えて暴発を防ぐ。CancelAction は m_bActivated 中に triggerReleased して活性を落とす
+            //   （矢は ConsumeAmmo を通らないため消費されない, ItemActionCatapult:176-196）。
+            if (_bowDrawing)
+            {
+                var cat = GetHeldCatapult(self, out var cdata);
+                if (cat != null && cdata != null) cat.CancelAction(cdata);
+                _bowDrawing = false; // 武器が既に切替済み(cat==null)でもフラグは必ず落とす（StopHolding が旧弓を CancelAction 済み）
+            }
             if (_firePressed)
             {
                 self.Attack(true);
@@ -170,6 +192,7 @@ namespace CompanionAIVerify
         //   1) 射線が対象コライダーに届く狙点を探す（ResolveShootableAim）。届かなければホールド。
         //   2) 届く狙点へカメラをスナップ（視差/ラグ解消）＋ADS。
         //   3) フルオート(GetBurstCount==0)は press 保持で RPM 連射、セミ/バーストは press/release 単発。
+        //   3') ★ [bow] 弓(ItemActionCatapult)は press→ドロー保持→release の3相へ分岐（前段は共有）。
         private static void RangedStep(EntityPlayerLocal self, in ThreatInfo threat, float d)
         {
             if (!Cfg.EnableRangedFire)
@@ -188,6 +211,8 @@ namespace CompanionAIVerify
             //   実効射程 = EngageRange.Read().range（ranged では GetRange()＝MaxRange 適用後の発射射程, ItemActionRanged:1376）。
             //   Slice A 実測で shotgun range≈10 なのに d≈20 で撃って弾が届かない問題を解消する。
             //   d は feet-to-feet、実際の弾は camera→aimPoint なので安全係数(既定0.85)で余裕を持たせる。
+            //   ※ [bow] 弓も ItemActionRanged 派生なので GetRange が取れる。ただし矢は放物線弾道で直線射程とズレる
+            //     （fireShot は無効化: Launcher:120-125）。落下/リードの弾道補正は本スライスのスコープ外。
             float fireMax = Cfg.RangedMaxEngageMeters;
             EngageRange.Info erC = EngageRange.Read(self);
             if (erC.valid && erC.isRanged && erC.range > 0.01f)
@@ -236,7 +261,7 @@ namespace CompanionAIVerify
 
             if (!shootable) // ★ 撃たない：遮蔽/FF/空。理由をログしてホールド
             {
-                ReleaseFireIfPressed(self);
+                ReleaseFireIfPressed(self); // [bow] ドロー中ならキャンセル（暴発回避）
                 if (Time.time >= _nextHoldLogTime)
                 {
                     _nextHoldLogTime = Time.time + Cfg.LogThrottleSec;
@@ -252,7 +277,7 @@ namespace CompanionAIVerify
             if (Cfg.FriendlyFireGate &&
                 FriendlyInLineOfFire(self, aimPoint, out int ffBlockerId))
             {
-                ReleaseFireIfPressed(self);
+                ReleaseFireIfPressed(self); // [bow] ドロー中ならキャンセル（暴発回避）
                 if (Time.time >= _nextHoldLogTime)
                 {
                     _nextHoldLogTime = Time.time + Cfg.LogThrottleSec;
@@ -268,6 +293,22 @@ namespace CompanionAIVerify
             {
                 self.playerCamera.transform.rotation =
                     Quaternion.LookRotation(shotDir.normalized, Vector3.up);
+            }
+
+            // ★ (3') [bow] 弓/クロスボウ(ItemActionCatapult)は press→ドロー保持→release の3相駆動へ分岐。
+            //   銃のフル/セミ分岐は press→次frame release（≒1frame）で strain≈0（矢が足元に落ちる）になるため、
+            //   専用ステップに切り出す。前段（射程/shootable/FF/狙点追従/カメラスナップ/ADS）はすべて共有。
+            ItemActionCatapult bow = GetHeldCatapult(self, out var bowData);
+            if (bow != null && bowData != null)
+            {
+                if (!Cfg.BowChargeEnabled)
+                {
+                    // ドロー無効時は弓を撃たない（ドローなしでは strain≈0 で実用にならない）。ドロー中なら安全に引き戻す。
+                    if (_bowDrawing) { bow.CancelAction(bowData); _bowDrawing = false; }
+                    return;
+                }
+                BowFireStep(self, in threat, d, bow, bowData, aimMode, bodyPart);
+                return;
             }
 
             // ★ (3) フルオート判定して駆動
@@ -306,6 +347,99 @@ namespace CompanionAIVerify
                 _nextFireTime = Time.time + Cfg.RangedFireIntervalSec;
                 FireLog(self, threat, d, aimMode, bodyPart, false, GetHoldingMeta(self), before);
             }
+        }
+
+        // ★ [bow] 弓ドロー駆動（3相）。ゲーム側 m_bActivated / m_ActivateTime を信頼の源にする。
+        //   Idle → press で ExecuteAction(false)（ItemActionCatapult:123-136: m_bActivated=true, m_ActivateTime=now）
+        //   Drawing → (now - m_ActivateTime) が m_MaxStrainTime×BowDrawFraction に達したら release
+        //            → ExecuteAction(true)（Catapult:138-148: strain=(経過)/maxStrain を乗せ base で1本発射）
+        //   Recover → 再ドロー抑制。厳密な連射律速はゲーム Delay(Catapult:109)に委譲。
+        //   ※ strain は Catapult:140 で Clamp01 されない（>1 になり得る）。BowDrawFraction を 1.0 未満に
+        //     保つことでフルドロー手前で離し、オーバーチャージ挙動を踏まない。
+        private static void BowFireStep(EntityPlayerLocal self, in ThreatInfo threat, float d,
+                                        ItemActionCatapult bow, ItemActionCatapult.ItemActionDataCatapult data,
+                                        string aimMode, string bodyPart)
+        {
+            // ゲーム側キャンセル（矢切れ/武器切替/TPカメラNG: Catapult:141-145 等）で活性が落ちたら状態同期
+            if (_bowDrawing && !data.m_bActivated)
+            {
+                _bowDrawing = false;
+            }
+
+            if (!_bowDrawing)
+            {
+                // 発射直後の再ドロー抑制（無駄 press とログの間引き。連射律速はゲーム Delay が担保）
+                if (Time.time < _bowNextTry) return;
+
+                int metaBefore = GetHoldingMeta(self);
+                self.Attack(false); // press → ExecuteAction(false)
+
+                if (data.m_bActivated)
+                {
+                    _bowDrawing = true; // ゲーム側が活性化＝ドロー開始成功
+                    if (Time.time >= _nextBowLogTime)
+                    {
+                        _nextBowLogTime = Time.time + Cfg.LogThrottleSec;
+                        Log.Out($"[CompanionAI] bow: draw-start {threat.Kind} id={threat.Target.entityId} d={d:0.0}m " +
+                                $"mag={metaBefore} maxStrain={data.m_MaxStrainTime:0.00}s frac={Cfg.BowDrawFraction:0.00}");
+                    }
+                }
+                else
+                {
+                    // 活性化せず＝矢切れでリロード要求(Catapult:113-120) or Delay 中。少し待って再試行。
+                    _bowNextTry = Time.time + Cfg.LogThrottleSec;
+                    if (Time.time >= _nextBowLogTime)
+                    {
+                        _nextBowLogTime = Time.time + Cfg.LogThrottleSec;
+                        Log.Out($"[CompanionAI] bow: hold (no draw) mag={GetHoldingMeta(self)} — reload/delay.");
+                    }
+                }
+                return;
+            }
+
+            // Drawing 中：ゲーム側 m_ActivateTime を基準に経過を測る（Time.time 差でゲームと完全同期）。
+            float maxStrain = (data.m_MaxStrainTime > 0.01f) ? data.m_MaxStrainTime : 2.0f;
+            float need      = maxStrain * Mathf.Clamp01(Cfg.BowDrawFraction);
+            float elapsed   = Time.time - data.m_ActivateTime;
+            if (elapsed < need) return; // まだ引き絞り中（狙点追従は前段で継続）
+
+            int before = GetHoldingMeta(self);
+            self.Attack(true); // release → 発射
+            _bowDrawing = false;
+
+            // 再ドロー抑制。Delay(RPM由来, ItemActionDataRanged.Delay)を尊重し、取れなければ FireInterval で代用。
+            float delay = data.Delay;
+            _bowNextTry = Time.time + ((delay > 0.01f) ? delay : Cfg.RangedFireIntervalSec);
+
+            int after = GetHoldingMeta(self);
+            float strain = (maxStrain > 0.01f) ? Mathf.Clamp01(elapsed / maxStrain) : 1f;
+            string hit = "none";
+            if (after < before) // 実発砲（Meta減）を検出して命中突合
+            {
+                Entity hitE = self.MinEventContext != null ? self.MinEventContext.Other : null;
+                hit = (hitE == null) ? "none"
+                    : (hitE.entityId == threat.Target.entityId ? "TARGET" : "OTHER id=" + hitE.entityId);
+            }
+            Log.Out($"[CompanionAI] bow: loose {threat.Kind} id={threat.Target.entityId} d={d:0.0}m " +
+                    $"strain={strain:0.00} mag={after} aim={aimMode}({bodyPart}) ads={(self.AimingGun ? "on" : "off")} -> hit={hit}");
+        }
+
+        // ★ [bow] 保持中アイテムが弓/クロスボウ(ItemActionCatapult)なら action と data を返す。違えば null。
+        //   継承: ItemActionCatapult : ItemActionLauncher : ItemActionRanged（Launcher.cs:7 で確認）。
+        //   ItemActionDataCatapult は publicize 済みで外部参照可（m_bActivated/m_ActivateTime/m_MaxStrainTime は public フィールド）。
+        private static ItemActionCatapult GetHeldCatapult(EntityPlayerLocal self,
+                                                          out ItemActionCatapult.ItemActionDataCatapult data)
+        {
+            data = null;
+            var inv = self.inventory;
+            var hi  = inv != null ? inv.holdingItem : null;
+            var hid = inv != null ? inv.holdingItemData : null;
+            if (hi == null || hi.Actions == null || hi.Actions.Length == 0) return null;
+            var cat = hi.Actions[0] as ItemActionCatapult;
+            if (cat == null) return null;
+            if (hid == null || hid.actionData == null || hid.actionData.Count == 0) return null;
+            data = hid.actionData[0] as ItemActionCatapult.ItemActionDataCatapult;
+            return (data != null) ? cat : null;
         }
 
         // 発砲/リロードのログ。Meta 差で実発砲を検出し、命中エンティティ(MinEventContext.Other)を突合。
@@ -472,6 +606,7 @@ namespace CompanionAIVerify
         }
 
         // 近接か遠距離か。ItemActionRanged のみ遠距離扱い、それ以外(素手/工具/近接武器)は近接。
+        //   ※ [bow] 弓は ItemActionCatapult : ItemActionLauncher : ItemActionRanged なので、ここでも遠距離判定される。
         private static bool IsMeleeHolding(EntityPlayerLocal self, out bool isRanged)
         {
             var hi = self.inventory != null ? self.inventory.holdingItem : null;

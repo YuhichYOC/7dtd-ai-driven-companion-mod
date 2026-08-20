@@ -26,7 +26,7 @@ namespace CompanionAIVerify
     // --- Tunables (companion_config.txt で上書き可能) --------------------------
     internal static class Cfg
     {
-        internal static string  ModVersion                 = "0.8.0";
+        internal static string  ModVersion                 = "0.8.1";
 
         internal static bool    Enabled                    = false;          // 起動時OFF。F8でトグル(ファイル対象外)
         internal const  KeyCode ToggleKey                  = KeyCode.F8;
@@ -55,6 +55,14 @@ namespace CompanionAIVerify
         internal static bool    FriendlyFireGate           = true;       // v0.8(D): 射線帯に友軍(他プレイヤー＋allyドローン)が居れば発砲しない
         internal static float   FriendlyFireMargin         = 0.4f;       // v0.8(D): 友軍AABBの片側膨張(m)。拡散＋コライダー幅ぶんの余裕。大きいほど安全側(撃たない)
         internal static float   RangedFireIntervalSec      = 0.4f;       // 発砲ケイデンス(≒2.5発/秒)
+
+        // --- 弓/クロスボウ引き絞り（ItemActionCatapult, ver0.8.1） ---
+        //   弓は「press でチャージ開始→一定時間ドロー保持→release で発射」。銃の press→次frame release では
+        //   strain≈0（矢が足元に落ちる）になるため、ItemActionCatapult 専用の3相駆動で引き絞ってから離す。
+        //   ドロー時間は武器の m_MaxStrainTime（XML "Max_strain_time" 既定2s を RPM 調整した実値, Catapult:59-67）を
+        //   実行時に読み、その割合(BowDrawFraction)まで引いてから release する。
+        internal static bool    BowChargeEnabled           = true;       // false で弓を撃たない（ドローなしでは実用にならないためホールド）
+        internal static float   BowDrawFraction            = 0.95f;      // フルドロー(m_MaxStrainTime)の何割まで引くか。strain は Clamp01 されない(Catapult:140)ため 1.0 未満でオーバーチャージ回避
 
         // --- ハイブリッド狙点（ver0.5） ---
         //   実測: 命中は headLift≈1.5-2.0、非命中は≈0-0.7 で分離。
