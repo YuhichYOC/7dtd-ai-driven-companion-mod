@@ -91,7 +91,9 @@ namespace CompanionAIVerify
                 $"AimFromCam={Cfg.AimFromCameraOrigin} ADS={Cfg.AimDownSightsOnEngage} ForceFPV={Cfg.ForceFirstPerson} | " +
                 $"Standoff={Cfg.StandoffMeters} Run={Cfg.RunMeters} ScanR={Cfg.ThreatScanRadius} " +
                 $"HeadLift={Cfg.HeadAimMinLift} MaxEngage={Cfg.RangedMaxEngageMeters} FireInt={Cfg.RangedFireIntervalSec} " +
-                $"ReachBuf={Cfg.ReachBuffer} LogThr={Cfg.LogThrottleSec}");
+                $"ReachBuf={Cfg.ReachBuffer} LogThr={Cfg.LogThrottleSec} " +
+                $"| Approach={Cfg.MeleeAutoApproach} ApproachMax={Cfg.MeleeApproachMaxDistance} " +
+                $"AimAssist={Cfg.MeleeAimAssist} PinLeader={Cfg.DebugPinTargetToLeader} Freeze={Cfg.DebugFreezeHostiles}");
         }
 
         private static bool Apply(string key, string val)
@@ -120,6 +122,7 @@ namespace CompanionAIVerify
                 case "RangedFireIntervalSec":      return TryF(val, ref Cfg.RangedFireIntervalSec);
                 case "AutoWeaponSwitch":           return TryBool(val, ref Cfg.AutoWeaponSwitch);
                 case "AutoStowWeaponsToToolbelt":  return TryBool(val, ref Cfg.AutoStowWeaponsToToolbelt);
+                case "StowDynamicMelee":           return TryBool(val, ref Cfg.StowDynamicMelee);
                 case "WeaponClassifyMode":
                 {
                     string m = val.Trim().ToLowerInvariant();
@@ -143,6 +146,12 @@ namespace CompanionAIVerify
                 case "PickupScanIntervalSec":      return TryF(val, ref Cfg.PickupScanIntervalSec);
                 case "LogEngageRange":             return TryBool(val, ref Cfg.LogEngageRange);
                 case "EngageLogMinInterval":       return TryF(val, ref Cfg.EngageLogMinInterval);
+                case "MeleeAutoApproach":          return TryBool(val, ref Cfg.MeleeAutoApproach);
+                case "MeleeApproachMaxDistance":   return TryF(val, ref Cfg.MeleeApproachMaxDistance);
+                case "MeleeAimAssist":             return TryBool(val, ref Cfg.MeleeAimAssist);
+                case "MeleeAimAssistHoldTicks":    return TryInt(val, ref Cfg.MeleeAimAssistHoldTicks);
+                case "DebugPinTargetToLeader":     return TryBool(val, ref Cfg.DebugPinTargetToLeader);
+                case "DebugFreezeHostiles":        return TryBool(val, ref Cfg.DebugFreezeHostiles);
                 default: return false;
             }
         }
@@ -161,6 +170,14 @@ namespace CompanionAIVerify
         {
             if (float.TryParse(s, System.Globalization.NumberStyles.Float,
                                System.Globalization.CultureInfo.InvariantCulture, out float v))
+            { dst = v; return true; }
+            return false;
+        }
+
+        private static bool TryInt(string s, ref int dst)
+        {
+            if (int.TryParse(s, System.Globalization.NumberStyles.Integer,
+                             System.Globalization.CultureInfo.InvariantCulture, out int v))
             { dst = v; return true; }
             return false;
         }
@@ -220,7 +237,21 @@ namespace CompanionAIVerify
                 $"AutoPickupLeaderDrops      = true\n" +
                 $"PickupRadius               = 6.0\n" +
                 $"PickupScanIntervalSec      = 0.5\n" +
-                $"PickupUnowned              = false\n";
+                $"PickupUnowned              = false\n" +
+                $"\n" +
+                $"# --- 交戦マニューバ（v0.8）---\n" +
+                $"LogEngageRange             = true\n" +
+                $"EngageLogMinInterval       = 0.5\n" +
+                $"# 格闘オートアプローチ: リーチ外の交戦中脅威が MaxDistance 内なら自動接近\n" +
+                $"MeleeAutoApproach          = true\n" +
+                $"MeleeApproachMaxDistance   = 6.0\n" +
+                $"# 照準補正(A): SetAttackTarget で近接レイをチェストへ自動補正\n" +
+                $"MeleeAimAssist             = true\n" +
+                $"MeleeAimAssistHoldTicks    = 30\n" +
+                $"# テスト用: ゾンビの標的をリーダーに固定（単独交戦で間合いを観察する用・通常は false）\n" +
+                $"DebugPinTargetToLeader     = false\n" +
+                $"# テスト用: 敵対をその場に固定（approachMax 検証で静止した交戦中ゾンビを置く用・通常は false）\n" +
+                $"DebugFreezeHostiles        = false\n";
         }
     }
 }

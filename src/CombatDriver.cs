@@ -27,6 +27,7 @@ namespace CompanionAIVerify
     internal static class CombatDriver
     {
         private static bool               _attackPressed;      // 近接: press 中フラグ
+        private static bool               _aimAssistSet;       // v0.8(B)-A: SetAttackTarget を張ったか（解除用）
         private static float              _nextEngageLogTime;
         private static bool               _fpvLogged;
         private static bool               _lastFpv;
@@ -86,6 +87,23 @@ namespace CompanionAIVerify
             // ★ (2) 近接交戦: 3Dエイム（ピッチ込み）→ press 駆動スイング
             FaceTarget3D(self, threat.Target);
 
+            // ★ v0.8(B)-A: 近接レイをターゲットのチェストへ自動補正させる。
+            //   ItemActionDynamic.GetExecuteActionTarget は attackTarget!=null のとき
+            //   ray を getChestPosition() 方向へ差し替える（ItemActionDynamic:327-330）。
+            //   これで FaceTarget3D の平面精度に依存せず命中が安定する。
+            //
+            //   ※ client では SetAttackTarget() を使えない：内部で world.entityDistributer.SendPacket を叩くが
+            //     entityDistributer は IsServer 時のみ生成される（World:468-477）ため client では null → NRE。
+            //     さらに attackTargetTime>0 にすると自動失効パス(EntityAlive:3367-3376)も同じ null を踏む。
+            //     → public フィールドへ直接代入し、attackTargetTime は 0 のまま（失効パスに入らせない）。
+            //       解除は ReleaseIfPressed で直接 null 代入。redirect は attackTarget を読むだけ(GetAttackTarget:5890)なので十分。
+            //       ダメージ同期は Attack()→DamageEntity()→NetPackageDamageEntity 経由で別途成立（attackTarget 非依存）。
+            if (Cfg.MeleeAimAssist)
+            {
+                self.attackTarget = threat.Target; // EntityAlive:716 (public field) — client-safe
+                _aimAssistSet = true;
+            }
+
             if (self.Attack(false)) // press。ケイデンスは canStartAttack の APM 律速が制御
             {
                 _attackPressed = true;
@@ -103,6 +121,14 @@ namespace CompanionAIVerify
             {
                 self.Attack(true); // release（スイングの後始末）
                 _attackPressed = false;
+            }
+            // v0.8(B)-A: 張っていた aim-assist の attackTarget を解除。
+            //   client では SetAttackTarget(null,0) も entityDistributer.SendPacket(EntityAlive:5932)で NRE になるため
+            //   フィールドを直接 null 代入する。attackTargetTime は元々 0 のまま＝失効パス(3367-)にも入らない。
+            if (_aimAssistSet)
+            {
+                self.attackTarget = null; // client-safe な直接解除
+                _aimAssistSet = false;
             }
         }
 
@@ -349,12 +375,13 @@ namespace CompanionAIVerify
             self.SetRotation(euler);
         }
 
-        // 保持アイテム action[0] の射程。取れなければ素手相当 2.0m。
+        // 保持アイテムの実効リーチ。EngageRange.Read が Dynamic melee(=ItemActionDynamic.Range/RangeDefault)を
+        // 正しく解決する。旧実装は基底 ItemAction.Range を読んでいたため、Dynamic melee のリーチを取れず
+        // 2.4m 武器を 2.0m フォールバック扱いしていた（実ログで range=2.4 と確認済み）。取れなければ 2.0m。
         private static float GetAttackReach(EntityPlayerLocal self)
         {
-            var hi = self.inventory != null ? self.inventory.holdingItem : null;
-            var a  = (hi != null && hi.Actions != null && hi.Actions.Length > 0) ? hi.Actions[0] : null;
-            if (a != null && a.Range > 0.01f) return a.Range;
+            EngageRange.Info er = EngageRange.Read(self);
+            if (er.valid && er.range > 0.01f) return er.range;
             return 2.0f;
         }
 

@@ -61,3 +61,13 @@ PickupUnowned              = false
 # --- 交戦マニューバ（v0.8.0） ---
 LogEngageRange             = true
 EngageLogMinInterval       = 0.5
+# 格闘オートアプローチ: リーチ外の交戦中脅威が MaxDistance 内なら自動接近
+MeleeAutoApproach          = true
+MeleeApproachMaxDistance   = 6.0
+# 照準補正(A): SetAttackTarget で近接レイをチェストへ自動補正
+MeleeAimAssist             = true
+MeleeAimAssistHoldTicks    = 30
+# テスト用: ゾンビの標的をリーダーに固定（単独交戦で間合いを観察する用・通常は false）
+DebugPinTargetToLeader     = false
+# テスト用: 敵対をその場に固定（approachMax 検証で静止した交戦中ゾンビを置く用・通常は false）
+DebugFreezeHostiles        = false

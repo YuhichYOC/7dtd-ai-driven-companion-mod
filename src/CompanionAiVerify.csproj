@@ -32,6 +32,11 @@
       <Private>false</Private>
     </Reference>
     <!-- 必要に応じて SCore.dll なども同様に -->
+
+    <!-- 設定ファイルをビルド先に出力 -->
+    <None Update="companion_config.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

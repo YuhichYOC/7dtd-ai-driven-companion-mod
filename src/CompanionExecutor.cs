@@ -60,6 +60,16 @@ namespace CompanionAIVerify
             ThreatInfo threat = ThreatScanner.ScanNearestActiveThreat(world, self);
             LogThreat(threat);
 
+            // --- v0.8(B): 格闘オートアプローチ（follow より優先） ---
+            //   格闘武器 かつ 交戦中脅威が「リーチ外 かつ approachMax 内」のとき、
+            //   移動目標をリーダーから脅威へ差し替えて前進する（既存の Stop@standoff / Steer→leader を上書き）。
+            //   接近steer の後に交戦オーバーレイを回して、リーチに入った瞬間から歩きながら振れるようにする。
+            if (TryMeleeApproach(self, in threat))
+            {
+                CombatDriver.OnCombatStep(self, threat);
+                return;
+            }
+
             // --- posture: follow ---
             Vector3 flat = leader.position - self.position; flat.y = 0f;
             float dist = flat.magnitude;
@@ -102,6 +112,30 @@ namespace CompanionAIVerify
             // --- 交戦オーバーレイ（Section E）: 最後に実行 ---
             //   in-range の近接は 3D エイムで上の平面 facing を上書きしつつ press 駆動。
             CombatDriver.OnCombatStep(self, threat);
+        }
+
+        // v0.8(B): 格闘オートアプローチの判定＋実行。
+        //   条件: MeleeAutoApproach ON / 交戦中脅威あり / 格闘武器保持 / reach < d <= approachMax。
+        //   距離 d は CombatDriver の swing ゲートと同じ threat.DistSq(feet-to-feet)基準に揃える。
+        //   reach は EngageRange の実効リーチ（Dynamic melee も正しく解決）。
+        //   停止は d<=reach。swing は CombatDriver 側で reach+ReachBuffer から開くので、
+        //   接近の最終区間は「歩きながら振る」→ reach で停止して振り続ける、と滑らかに繋がる。
+        private static bool TryMeleeApproach(EntityPlayerLocal self, in ThreatInfo threat)
+        {
+            if (!Cfg.MeleeAutoApproach || !Cfg.CombatMode || !threat.Valid) return false;
+
+            EngageRange.Info er = EngageRange.Read(self);
+            if (!er.valid || er.isRanged) return false;   // 遠隔/無効は対象外（遠隔は RangedStep が担当）
+
+            float reach = (er.range > 0.01f) ? er.range : 2.0f;
+            float d     = Mathf.Sqrt(threat.DistSq);
+
+            // リーチ内なら接近不要（その場で振る）。approachMax 外なら追わない（リーダーから離れ過ぎ防止）。
+            if (d <= reach || d > Cfg.MeleeApproachMaxDistance) return false;
+
+            Vector3 lookDir = threat.Target.position - self.position; lookDir.y = 0f;
+            Steer(self, moveTarget: threat.Target.position, lookDir: lookDir, running: false); // 数m の詰めは歩き（照準安定）
+            return true;
         }
 
         private static void Steer(EntityPlayerLocal self, Vector3 moveTarget, Vector3 lookDir, bool running)
