@@ -28,6 +28,7 @@ namespace CompanionAIVerify
     {
         private static int   _lastLoggedThreatId = int.MinValue;
         private static float _nextLogTime;
+        private static float _nextJumpLogTime;    // ★ [jump] 段差ジャンプ発火ログの throttle
 
         internal static void OnMovePrefix(EntityPlayerLocal self)
         {
@@ -166,8 +167,69 @@ namespace CompanionAIVerify
             self.movementInput.moveForward = Mathf.Clamp(Vector3.Dot(moveWorld, lookFwd),  -1f, 1f);
             self.movementInput.moveStrafe  = Mathf.Clamp(Vector3.Dot(moveWorld, lookRight), -1f, 1f);
             self.movementInput.running     = running;
-            self.movementInput.jump        = false;
+
+            // ★ [jump] 進行方向に「乗り越え可能な1ブロック段差」があればジャンプで越える。
+            //   jump は EPL:3526 で inputWasJump とのエッジ比較＋onGround ゲート(EPL:3530)。詰まっている間 true を
+            //   返し続けても、初回発火→空中(onGround=false で false)→着地で再評価、と自然に1回ずつジャンプする。
+            self.movementInput.jump        = ShouldJumpObstacle(self, moveWorld);
             self.movementInput.down        = false;
+        }
+
+        // ★ [jump] 前方に「1ブロック段差（乗り越え可能）」があるかを判定し、先手でジャンプする。
+        //   接地ゲートのみ: onGround は EPL:2589 で m_vp_FPController.Grounded から更新されるので EPL でも有効。
+        //   ★ isCollidedHorizontally は使わない: それを更新する Entity:1834 は直後 1837 の m_characterController.IsGrounded() と
+        //     同じ CharacterController 経路にあり、vp_FPController で動く EntityPlayerLocal では通らず常に false のため
+        //     （実ログで確認: 段差手前でも not collidedHorizontally が連続）。よって「詰まってから」ではなく
+        //     前方ボクセル探査で「詰まる前に」段差を検出して跳ぶ。
+        //   乗り越え可否: 進行方向の前方セルで「脛の高さ(+0.5m)にブロック」かつ「頭の高さ(+1.5m)は空」＝段差1ブロック。
+        //     2ブロック以上の壁は頭の高さが塞がるので false（無駄ジャンプを抑止）。高さオフセットは position.y の
+        //     微小揺れ（地面上面の丸め）に強い +0.5/+1.5 を採用。階段状(1→2→3)は各段が1ブロック差なので順に登れる。
+        //   ※ 検証フェーズ: 座標変換(Origin要否/高さ/プローブ)が正しいか実機で追えるよう毎回ログする。安定後に削る。
+        private static bool ShouldJumpObstacle(EntityPlayerLocal self, Vector3 moveDir)
+        {
+            if (!Cfg.JumpObstacles) return false;
+            if (!self.onGround) return false;
+
+            World world = self.world;
+            if (world == null) return false;
+
+            Vector3 flat = moveDir; flat.y = 0f;
+            if (flat.sqrMagnitude < 1e-4f) return false; // 前進意図なし
+            flat.Normalize();
+
+            // Entity.position はワールド座標（World 内の worldToBlockPos(_position) 呼び出し群と同じ扱い）。
+            //   ※ CombatDriver で Origin を足したのは playerCamera.transform.position が Unity レンダ座標だったため。
+            //     Entity.position には Origin 補正は不要。Origin.position はログにだけ残し、非ゼロ環境で気付けるようにする。
+            Vector3 wp    = self.position;
+            Vector3 ahead = wp + flat * Cfg.JumpProbeAhead;
+
+            Vector3i legCell  = World.worldToBlockPos(new Vector3(ahead.x, wp.y + 0.5f, ahead.z)); // 脛の高さ
+            Vector3i headCell = World.worldToBlockPos(new Vector3(ahead.x, wp.y + 1.5f, ahead.z)); // 頭の高さ
+
+            bool legBlocked = IsBlocking(world, legCell.x,  legCell.y,  legCell.z);
+            bool headClear  = !IsBlocking(world, headCell.x, headCell.y, headCell.z);
+            bool jump = legBlocked && headClear;
+
+            if (Time.time >= _nextJumpLogTime)
+            {
+                _nextJumpLogTime = Time.time + Cfg.LogThrottleSec;
+                Log.Out($"[CompanionAI] pre-jump: pos=({wp.x:0.00},{wp.y:0.00},{wp.z:0.00}) originY={Origin.position.y:0.00} " +
+                        $"fwd=({flat.x:0.0},{flat.z:0.0}) probe={Cfg.JumpProbeAhead:0.0} " +
+                        $"leg=({legCell.x},{legCell.y},{legCell.z})blk={legBlocked} " +
+                        $"head=({headCell.x},{headCell.y},{headCell.z})clr={headClear} -> jump={jump}");
+            }
+
+            return jump;
+        }
+
+        // セルが移動を阻害するか。air は通行可、IsCollideMovement=true の実体ブロックのみ阻害。
+        //   BlockValue.isair / Block.IsCollideMovement は vanilla の衝突判定と同じ経路（World:2072）。
+        private static bool IsBlocking(World world, int x, int y, int z)
+        {
+            BlockValue bv = world.GetBlock(x, y, z);
+            if (bv.isair) return false;
+            Block b = bv.Block;
+            return b != null && b.IsCollideMovement;
         }
 
         private static void FaceOnly(EntityPlayerLocal self, Vector3 lookDir)

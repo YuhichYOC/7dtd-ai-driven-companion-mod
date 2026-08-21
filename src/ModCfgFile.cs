@@ -94,6 +94,7 @@ namespace CompanionAIVerify
                 $"RangeSafety={Cfg.RangedRangeSafety} FFGate={Cfg.FriendlyFireGate} FFMargin={Cfg.FriendlyFireMargin} " +
                 $"ReachBuf={Cfg.ReachBuffer} LogThr={Cfg.LogThrottleSec} " +
                 $"Bow={Cfg.BowChargeEnabled} BowFrac={Cfg.BowDrawFraction} " +
+                $"Jump={Cfg.JumpObstacles} JumpProbe={Cfg.JumpProbeAhead} " +
                 $"| Approach={Cfg.MeleeAutoApproach} ApproachMax={Cfg.MeleeApproachMaxDistance} StepIn={Cfg.MeleeApproachStepIn} " +
                 $"AimAssist={Cfg.MeleeAimAssist} PinLeader={Cfg.DebugPinTargetToLeader} Freeze={Cfg.DebugFreezeHostiles}");
         }
@@ -116,6 +117,9 @@ namespace CompanionAIVerify
                 case "WaypointArriveM":            return TryF(val, ref Cfg.WaypointArriveM);
                 case "WaypointHeightTolM":         return TryF(val, ref Cfg.WaypointHeightTolM);
                 case "PathStaleSec":               return TryF(val, ref Cfg.PathStaleSec);
+                // ★ [jump] 障害物ジャンプ（v0.8.1）
+                case "JumpObstacles":              return TryBool(val, ref Cfg.JumpObstacles);
+                case "JumpProbeAhead":             return TryF(val, ref Cfg.JumpProbeAhead);
                 case "ThreatScanRadius":           return TryF(val, ref Cfg.ThreatScanRadius);
                 case "LogThrottleSec":             return TryF(val, ref Cfg.LogThrottleSec);
                 case "ReachBuffer":                return TryF(val, ref Cfg.ReachBuffer);
@@ -205,6 +209,12 @@ namespace CompanionAIVerify
                 $"# --- 追従 ---\n" +
                 $"StandoffMeters             = 3.0\n" +
                 $"RunMeters                  = 8.0\n" +
+                $"\n" +
+                $"# --- 障害物ジャンプ（v0.8.1）---\n" +
+                $"# 前進中に前方が詰まり、前方セルが1ブロック段差（脛にブロック/頭は空）ならジャンプで乗り越える。\n" +
+                $"# 2ブロック以上の壁はジャンプしない。ProbeAhead は段差セルを見に行く前方距離(m)。\n" +
+                $"JumpObstacles              = true\n" +
+                $"JumpProbeAhead             = 0.6\n" +
                 $"\n" +
                 $"# --- 脅威検知 ---\n" +
                 $"ThreatScanRadius           = 20.0\n" +

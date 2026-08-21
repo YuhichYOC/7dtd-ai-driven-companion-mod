@@ -39,6 +39,13 @@ namespace CompanionAIVerify
         internal static float   WaypointHeightTolM         = 1.5f;           // WP到達の高さ許容
         internal static float   PathStaleSec               = 3.0f;           // これより古い経路は無視し直線へ戻す
 
+        // --- 障害物ジャンプ（ver0.8.1） ---
+        //   前進中に onGround(接地)＆isCollidedHorizontally(前方に詰まった)を検出し、前方セルが
+        //   「脛の高さにブロック／頭の高さは空」＝1ブロック段差なら movementInput.jump で乗り越える。
+        //   2ブロック以上の壁は頭が塞がるためジャンプしない（無駄ジャンプ抑止）。
+        internal static bool    JumpObstacles              = true;           // 段差ジャンプ ON/OFF
+        internal static float   JumpProbeAhead             = 0.6f;           // 前方プローブ距離(m)。段差セルを見に行く距離。大きいほど早出しジャンプ
+
         internal static float   ThreatScanRadius           = 20.0f;          // 脅威走査半径(m)
         internal static bool    CombatMode                 = true;           // true=脅威を向く/叩く
         internal static float   LogThrottleSec             = 0.5f;           // 検知/交戦ログの最小間隔

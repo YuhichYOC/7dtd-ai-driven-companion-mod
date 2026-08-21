@@ -16,6 +16,12 @@ WaypointArriveM            = 1.0
 WaypointHeightTolM         = 1.5
 PathStaleSec               = 3.0
 
+# --- 障害物ジャンプ（v0.8.1）---
+# 前進中に前方が詰まり、前方セルが1ブロック段差（脛にブロック/頭は空）ならジャンプで乗り越える。
+# 2ブロック以上の壁はジャンプしない。ProbeAhead は段差セルを見に行く前方距離(m)。
+JumpObstacles              = true
+JumpProbeAhead             = 0.6
+
 # --- 脅威検知 ---
 ThreatScanRadius           = 20.0
 LogThrottleSec             = 0.5
