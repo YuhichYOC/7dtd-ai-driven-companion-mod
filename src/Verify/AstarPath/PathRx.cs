@@ -36,7 +36,7 @@
 
 using HarmonyLib;
 
-namespace CompanionAIVerify
+namespace CompanionAIVerify.AstarPath
 {
     [HarmonyPatch(typeof(GameManager), "ChatMessageClient")]
     internal static class Patch_GameManager_ChatMessageClient_PathRx

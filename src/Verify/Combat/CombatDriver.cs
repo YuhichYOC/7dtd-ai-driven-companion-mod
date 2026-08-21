@@ -22,7 +22,12 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace CompanionAIVerify
+using CompanionAIVerify.Config;
+using CompanionAIVerify.Perception;
+using CompanionAIVerify.Positioning;
+using CompanionAIVerify.ToolSelection;
+
+namespace CompanionAIVerify.Combat
 {
     // --- Combat (engage slice) ----------------------------------------------
     internal static class CombatDriver

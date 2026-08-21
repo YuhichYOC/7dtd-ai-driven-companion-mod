@@ -87,33 +87,82 @@ using GamePath;
 using HarmonyLib;
 using UnityEngine;
 
-namespace CompanionAIVerify
+namespace CompanionAIVerify.AstarPath
 {
     // --- Tunables（検証後に Cfg / ModCfgFile へ昇格可。今はスライス隔離のためローカル保持） ------
     internal static class HostProbeCfg
     {
-        internal static bool    Enabled          = false;          // 起動時OFF。F10でトグル
-        internal const  KeyCode ToggleKey        = KeyCode.F10;     // F9 はゲーム側でスクリーンショットに割当のため回避（F8=FPS表示の前例よりバインド自体は読取を妨げないが、スクショ副作用を避ける）
+        internal static bool    Enabled                    = false;          // 起動時OFF。F10でトグル
+        internal const  KeyCode ToggleKey                  = KeyCode.F10;     // F9 はゲーム側でスクリーンショットに割当のため回避（F8=FPS表示の前例よりバインド自体は読取を妨げないが、スクショ副作用を避ける）
 
-        internal static string  CompanionName    = "";             // 空 = 最近傍の remote player を採用
-        internal static bool    AssignNavigator  = true;           // コンパニオンに navigator を遅延付与（ルートA′）
+        internal static string  CompanionName              = "";             // 空 = 最近傍の remote player を採用
+        internal static bool    AssignNavigator            = true;           // コンパニオンに navigator を遅延付与（ルートA′）
 
-        internal static float   RepathSec        = 0.5f;           // 再発注の最小間隔
-        internal static float   PathSpeed        = 1.5f;           // FindPath へ渡す速度（抽出のみでは表示上の値）
-        internal static float   PathTimeoutSec   = 3.0f;           // 発注後この秒数で結果が来なければ打ち切り
-        internal static float   MaxCompanionDist = 60.0f;          // これ以上離れたら発注しない。あえて緩く保つ:
+        internal static float   RepathSec                  = 0.5f;           // 再発注の最小間隔
+        internal static float   PathSpeed                  = 1.5f;           // FindPath へ渡す速度（抽出のみでは表示上の値）
+        internal static float   PathTimeoutSec             = 3.0f;           // 発注後この秒数で結果が来なければ打ち切り
+        internal static float   MaxCompanionDist           = 60.0f;          // これ以上離れたら発注しない。あえて緩く保つ:
                                                                    //   40〜59m の部分経路を辿って自力接近する自己修復帯域を殺さないため。
                                                                    //   安全弁は endGap 分類＋スタックタイマー側で持つ（下）。
-        internal static float   LogThrottleSec   = 0.5f;           // 成功ログの最小間隔（状態/点数変化時は即時）
+        internal static float   LogThrottleSec             = 0.5f;           // 成功ログの最小間隔（状態/点数変化時は即時）
 
         // endGap 分類（到達判定）とスタック検出。部分経路を「捨てない・到達と同一視しない・状態信号にする」。
-        internal static float   ReachEpsilonM    = 1.5f;           // endGap ≤ これ → REACHED（終端がリーダーに到達）
-        internal static float   StuckMinDeltaM   = 0.5f;           // 進捗とみなす endGap の最小短縮量（ノイズ無視）
-        internal static float   StuckSec         = 3.0f;           // endGap が縮まないままこの秒数 → STUCK
+        internal static float   ReachEpsilonM              = 1.5f;           // endGap ≤ これ → REACHED（終端がリーダーに到達）
+        internal static float   StuckMinDeltaM             = 0.5f;           // 進捗とみなす endGap の最小短縮量（ノイズ無視）
+        internal static float   StuckSec                   = 3.0f;           // endGap が縮まないままこの秒数 → STUCK
 
         // 診断: フックが走っているか＆ゲート状態を無条件で吐く（Enabled/F9 と独立）。切り分け後は false へ。
-        internal static bool    DebugHeartbeat   = true;
-        internal static float   HeartbeatSec     = 2.0f;
+        internal static bool    DebugHeartbeat             = true;
+        internal static float   HeartbeatSec               = 2.0f;
+    }
+
+    internal static class WorldInfo
+    {
+        internal static World             World = null;
+        internal static EntityPlayerLocal Leader    = null;
+        internal static EntityPlayer      Companion = null;
+        internal static float             Distance  = 0.0f;
+        internal static float             Now       = 0.0f;
+
+        internal static bool WorldIsNull => World == null;
+        internal static bool LeaderIsNull => Leader == null;
+        internal static bool CompanionIsNull => Companion == null;
+        internal static bool WorldIsRemote => World.IsRemote();
+        internal static bool AstarIsNull => AstarManager.Instance == null;
+        internal static bool PathFinderThreadIsNull => PathFinderThread.Instance == null;
+
+        internal static void FillLeader() => Leader = World.GetPrimaryPlayer();
+        internal static void FillCompanion() => Companion = FindCompanion();
+        internal static void MeasureDistance() => Distance = Vector3.Distance(Companion.position, Leader.position);
+
+        // remote ( = ホスト非ローカル ) な生存プレイヤーからコンパニオンを選ぶ
+        private static EntityPlayer FindCompanion()
+        {
+            var players       = World.GetPlayers();
+            if (players == null) return null;
+
+            string want       = HostProbeCfg.CompanionName;
+            EntityPlayer best = null;
+            float bestSq      = float.MaxValue;
+
+            for (int i = 0; i < players.Count; i++)
+            {
+                EntityPlayer p = players[i];
+                if (p == null || p == Leader) continue;
+                if (!p.isEntityRemote) continue;                            // ホストのローカル(リーダー)を除外
+                if (p.IsDead() || !p.IsSpawned()) continue;
+
+                if (!string.IsNullOrEmpty(want))
+                {
+                    if (p.PlayerDisplayName == want) return p;               // 名前一致を最優先
+                    continue;
+                }
+
+                float sq = (p.position - Leader.position).sqrMagnitude;
+                if (sq < bestSq) { bestSq = sq; best = p; }
+            }
+            return best;
+        }
     }
 
     // --- Harmony patch : ホスト側の毎tickティック源 ---------------------------------------------
@@ -134,180 +183,160 @@ namespace CompanionAIVerify
     internal static class HostPathProbe
     {
         // 単一コンパニオン想定の逐次状態
-        private static int   _companionId       = int.MinValue;
-        private static bool  _awaitingResult    = false;
-        private static float _requestTime       = 0f;
-        private static float _nextRequestTime   = 0f;
+        private static int    _companionId       = int.MinValue;
+        private static bool   _awaitingResult    = false;
+        private static float  _requestTime       = 0f;
+        private static float  _nextRequestTime   = 0f;
 
         // endGap 分類 / スタック検出のエピソード状態
-        private static float _bestEndGap        = float.MaxValue;  // この接近エピソードで観測した最小 endGap（進捗の基準線）
-        private static float _lastProgressTime  = 0f;              // 最後に endGap が有意に縮んだ時刻
-        private static string _lastStatus       = "";             // 直近ログした状態（変化時は即ログ）
+        private static float  _bestEndGap        = float.MaxValue;  // この接近エピソードで観測した最小 endGap（進捗の基準線）
+        private static float  _lastProgressTime  = 0f;              // 最後に endGap が有意に縮んだ時刻
+        private static string _lastStatus        = "";             // 直近ログした状態（変化時は即ログ）
 
         // ログ絞り込み
-        private static int   _lastLoggedN       = int.MinValue;
-        private static float _nextLogTime       = 0f;
-        private static float _nextSkipLogTime   = 0f;
-        private static float _nextHeartbeat     = 0f;
+        private static int    _lastLoggedN       = int.MinValue;
+        private static float  _nextLogTime       = 0f;
+        private static float  _nextSkipLogTime   = 0f;
+        private static float  _nextHeartbeat     = 0f;
 
         internal static void OnHostTick(EntityPlayerLocal self)
         {
-            // --- 診断ハートビート: この postfix が走っているか＆ゲート状態を無条件で吐く ---------
-            //   ・全く出ない  → フック未発火（DLL未ロード/未パッチ、または local player 不在）
-            //   ・isRemote=true → この機は client。実サーバは別インスタンス（計画の前提が崩れている）
-            //   ・astar=false / pft=false → A* 未稼働（サーバだが探索器が立っていない）
-            //   ・primary=false → local player 未取得（この tick では発注不可）
-            if (HostProbeCfg.DebugHeartbeat && Time.time >= _nextHeartbeat)
-            {
-                _nextHeartbeat = Time.time + HostProbeCfg.HeartbeatSec;
-                World hw = (GameManager.Instance != null) ? GameManager.Instance.World : null;
-                bool isRemote  = (hw != null) && hw.IsRemote();
-                bool hasPrimary= (hw != null) && (hw.GetPrimaryPlayer() != null);
-                int  players   = (hw != null && hw.GetPlayers() != null) ? hw.GetPlayers().Count : -1;
-                Log.Out($"[CompanionAI][host] hook alive: self={(self != null ? self.entityId : -1)} " +
-                        $"world={(hw != null)} isRemote={isRemote} primary={hasPrimary} players={players} " +
-                        $"astar={(AstarManager.Instance != null)} pft={(PathFinderThread.Instance != null)} " +
-                        $"enabled={HostProbeCfg.Enabled} focus={Application.isFocused}");
-            }
+            LogHeartbeat(self);
+            LogEdge();
 
-            // 入力エッジ診断: このフック文脈で GetKeyDown が生きているかを可視化する。
-            //   ・任意キー押下でこの行が出る → Input エッジは有効。F9 だけ効かないならキー横取り。
-            //   ・どのキーでも出ない(かつ focus=True) → この文脈で Input が読めない → 別フック要。
-            if (HostProbeCfg.DebugHeartbeat && Input.anyKeyDown)
-                Log.Out("[CompanionAI][host] Input.anyKeyDown edge seen here");
+            Toggle();
 
-            // F10 トグル（ホストで押す想定。IsRemote 側で押しても実処理は下のゲートで弾かれる）
-            if (Input.GetKeyDown(HostProbeCfg.ToggleKey))
-            {
-                HostProbeCfg.Enabled = !HostProbeCfg.Enabled;
-                Log.Out("[CompanionAI][host] path-probe = " + HostProbeCfg.Enabled);
-                if (!HostProbeCfg.Enabled) ResetState();
-            }
             if (!HostProbeCfg.Enabled) return;
 
-            World world = (GameManager.Instance != null) ? GameManager.Instance.World : null;
-            if (world == null) return;
+            WorldInfo.World = (GameManager.Instance != null) ? GameManager.Instance.World : null;
+            if (WorldInfo.WorldIsNull) return;
 
-            // --- ホスト自己ゲート（サーバ かつ A* 稼働）--------------------------------------
-            if (world.IsRemote()) return;                                   // client では何もしない
-            if (AstarManager.Instance == null) return;                      // A* 未稼働（保険）
-            if (PathFinderThread.Instance == null) return;
+            if (!CanRun()) return;
 
-            EntityPlayerLocal leader = world.GetPrimaryPlayer();
-            if (leader == null) return;
+            ResetCompanionIfChanged();
 
-            EntityPlayer companion = FindCompanion(world, leader);
-            if (companion == null)
+            WorldInfo.MeasureDistance();
+            if (!CompanionIsCloseToNavigate()) return;
+
+            if (!EnsureNavigator()) return;                        // 付与不可なら発注しない
+
+            WorldInfo.Now = Time.time;
+
+            Order();
+
+            Retrieve();
+        }
+
+        // F10 トグル ( ホストで押す想定。IsRemote 側で押しても実処理は下のゲートで弾かれる )
+        private static void Toggle()
+        {
+            if (!Input.GetKeyDown(HostProbeCfg.ToggleKey)) return;
+
+            HostProbeCfg.Enabled = !HostProbeCfg.Enabled;
+            Log.Out("[CompanionAI][host] path-probe = " + HostProbeCfg.Enabled);
+            if (!HostProbeCfg.Enabled) ResetState();
+        }
+
+        private static bool CanRun()
+        {
+            // --- ホスト自己ゲート ( サーバ側であること かつ A* が稼働していること が前提 ) --------------------------------------
+            if (WorldInfo.WorldIsRemote) return false;                    // client では何もしない
+            if (WorldInfo.AstarIsNull) return false;                      // A* 未稼働 ( 保険 )
+            if (WorldInfo.PathFinderThreadIsNull) return false;
+            WorldInfo.FillLeader();
+            if (WorldInfo.LeaderIsNull) return false;
+            WorldInfo.FillCompanion();
+            if (WorldInfo.CompanionIsNull)
             {
                 if (Time.time >= _nextSkipLogTime)
                 {
                     _nextSkipLogTime = Time.time + 2.0f;
                     Log.Out("[CompanionAI][host] no companion (remote player) found");
                 }
-                return;
+                return false;
             }
+            return true;
+        }
 
-            // コンパニオンが変わったら状態リセット
-            if (companion.entityId != _companionId)
-            {
-                _companionId = companion.entityId;
-                _awaitingResult = false;
-                _nextRequestTime = 0f;
-                _lastLoggedN = int.MinValue;
-                _bestEndGap = float.MaxValue;
-                _lastProgressTime = Time.time;
-                _lastStatus = "";
-            }
+        // コンパニオンが変わったら状態リセット
+        private static void ResetCompanionIfChanged()
+        {
+            if (WorldInfo.Companion.entityId == _companionId) return;
 
-            float dist = Vector3.Distance(companion.position, leader.position);
-            if (dist > HostProbeCfg.MaxCompanionDist)
+            _companionId = WorldInfo.Companion.entityId;
+            _awaitingResult = false;
+            _nextRequestTime = 0f;
+            _lastLoggedN = int.MinValue;
+            _bestEndGap = float.MaxValue;
+            _lastProgressTime = Time.time;
+            _lastStatus = string.Empty;
+        }
+
+        private static bool CompanionIsCloseToNavigate()
+        {
+            if (WorldInfo.Distance > HostProbeCfg.MaxCompanionDist)
             {
                 if (Time.time >= _nextSkipLogTime)
                 {
                     _nextSkipLogTime = Time.time + 2.0f;
-                    Log.Out($"[CompanionAI][host] companion too far ({dist:0.0}m > {HostProbeCfg.MaxCompanionDist:0}m); skip request");
+                    Log.Out($"[CompanionAI][host] companion too far ({WorldInfo.Distance:0.0}m > {HostProbeCfg.MaxCompanionDist:0}m); skip request");
                 }
-                return;
+                return false;
             }
-
-            EnsureNavigator(companion);
-            if (companion.navigator == null) return;                        // 付与不可なら発注しない
-
-            float now = Time.time;
-
-            // --- 発注 -----------------------------------------------------------------------
-            if (!_awaitingResult && now >= _nextRequestTime)
-            {
-                Vector3 target = leader.position;                           // follow: コンパニオン→リーダー
-                // FindPath(entity, target, speed, canBreak, aiTask) : zombie と同一入口
-                PathFinderThread.Instance.FindPath(companion, target, HostProbeCfg.PathSpeed, false, null);
-                _awaitingResult = true;
-                _requestTime = now;
-                _nextRequestTime = now + HostProbeCfg.RepathSec;
-            }
-
-            // --- 引取 -----------------------------------------------------------------------
-            if (_awaitingResult)
-            {
-                PathInfo pi = PathFinderThread.Instance.GetPath(companion.entityId);  // path!=null のときだけ非nullで返り、内部から除去される
-                if (pi != null && pi.path != null)
-                {
-                    ExtractAndLog(companion, leader, pi.path);
-                    pi.path.Destruct();                                     // ★プール返却。以後 points を参照しない
-                    _awaitingResult = false;
-                }
-                else if (!PathFinderThread.Instance.IsCalculatingPath(companion.entityId))
-                {
-                    // worker が処理済みで経路なし（path==null → finishedPaths から除去済み）
-                    LogNoPath(companion, leader, dist, "no path (null result)");
-                    _awaitingResult = false;
-                }
-                else if (now - _requestTime > HostProbeCfg.PathTimeoutSec)
-                {
-                    // 念のためのウォッチドッグ（詰まり）
-                    LogNoPath(companion, leader, dist, $"timeout {HostProbeCfg.PathTimeoutSec:0.0}s");
-                    _awaitingResult = false;
-                }
-            }
+            return true;
         }
 
-        // remote(=ホスト非ローカル) な生存プレイヤーからコンパニオンを選ぶ
-        private static EntityPlayer FindCompanion(World world, EntityPlayerLocal leader)
+        private static bool EnsureNavigator()
         {
-            var players = world.GetPlayers();
-            if (players == null) return null;
-
-            string want = HostProbeCfg.CompanionName;
-            EntityPlayer best = null;
-            float bestSq = float.MaxValue;
-
-            for (int i = 0; i < players.Count; i++)
-            {
-                EntityPlayer p = players[i];
-                if (p == null || p == leader) continue;
-                if (!p.isEntityRemote) continue;                            // ホストのローカル(リーダー)を除外
-                if (p.IsDead() || !p.IsSpawned()) continue;
-
-                if (!string.IsNullOrEmpty(want))
-                {
-                    if (p.PlayerDisplayName == want) return p;               // 名前一致を最優先
-                    continue;
-                }
-
-                float sq = (p.position - leader.position).sqrMagnitude;
-                if (sq < bestSq) { bestSq = sq; best = p; }
-            }
-            return best;
-        }
-
-        private static void EnsureNavigator(EntityPlayer companion)
-        {
-            if (!HostProbeCfg.AssignNavigator) return;
-            if (companion.navigator == null)
+            if (!HostProbeCfg.AssignNavigator) return false;
+            if (WorldInfo.Companion.navigator == null)
             {
                 // CreateNavigator(EntityAlive) : companion は EntityPlayer : EntityAlive
-                companion.navigator = AstarManager.CreateNavigator(companion);
-                Log.Out($"[CompanionAI][host] assigned navigator to companion '{companion.PlayerDisplayName}' ({companion.entityId})");
+                WorldInfo.Companion.navigator = AstarManager.CreateNavigator(WorldInfo.Companion);
+                Log.Out($"[CompanionAI][host] assigned navigator to companion '{WorldInfo.Companion.PlayerDisplayName}' ({WorldInfo.Companion.entityId})");
+                return false;
+            }
+            return true;
+        }
+
+        // --- 発注 -----------------------------------------------------------------------
+        private static void Order()
+        {
+            if (_awaitingResult) return;
+            if (WorldInfo.Now < _nextRequestTime) return;
+
+            // follow : コンパニオン -> リーダー
+            // FindPath(entity, target, speed, canBreak, aiTask) : zombie と同一入口
+            PathFinderThread.Instance.FindPath(WorldInfo.Companion, WorldInfo.Leader.position, HostProbeCfg.PathSpeed, false, null);
+
+            _awaitingResult = true;
+            _requestTime = WorldInfo.Now;
+            _nextRequestTime = WorldInfo.Now + HostProbeCfg.RepathSec;
+        }
+
+        // --- 引取 -----------------------------------------------------------------------
+        private static void Retrieve()
+        {
+            if (!_awaitingResult) return;
+
+            PathInfo pi = PathFinderThread.Instance.GetPath(WorldInfo.Companion.entityId);  // path != null のときだけ非 null で返り、内部から除去される
+            if (pi != null && pi.path != null)
+            {
+                ExtractAndLog(WorldInfo.Companion, WorldInfo.Leader, pi.path);
+                pi.path.Destruct();                                     // ★プール返却。以後 points を参照しない
+                _awaitingResult = false;
+            }
+            else if (!PathFinderThread.Instance.IsCalculatingPath(WorldInfo.Companion.entityId))
+            {
+                // worker が処理済みで経路なし ( path == null -> finishedPaths から除去済み )
+                LogNoPath(WorldInfo.Companion, WorldInfo.Leader, WorldInfo.Distance, "no path (null result)");
+                _awaitingResult = false;
+            }
+            else if (WorldInfo.Now - _requestTime > HostProbeCfg.PathTimeoutSec)
+            {
+                // 念のためのウォッチドッグ ( 詰まり )
+                LogNoPath(WorldInfo.Companion, WorldInfo.Leader, WorldInfo.Distance, $"timeout {HostProbeCfg.PathTimeoutSec:0.0}s");
+                _awaitingResult = false;
             }
         }
 
@@ -400,6 +429,40 @@ namespace CompanionAIVerify
             _lastProgressTime = Time.time;
             _lastStatus = "";
             // 付与した navigator はあえて残す（player では inert。探索中の null 化による worker NRE を避ける）。
+        }
+
+        // --- 診断ハートビート : この postfix が走っているか & ゲート状態を無条件で吐く ---------
+        //   - 全く出ない                   -> フック未発火 ( DLL 未ロード / 未パッチ, または local player 不在 )
+        //   - isRemote = true             -> この機は client である。実サーバは別インスタンス ( 計画の前提が崩れている )
+        //   - astar = false / pft = false -> A* 未稼働 ( サーバだが探索器が立っていない )
+        //   - primary = false             -> local player 未取得 ( この tick では発注不可 )
+        private static void LogHeartbeat(EntityPlayerLocal self)
+        {
+            if (!HostProbeCfg.DebugHeartbeat) return;
+            if (Time.time < _nextHeartbeat) return;
+
+            _nextHeartbeat = Time.time + HostProbeCfg.HeartbeatSec;
+            World hw         = (GameManager.Instance != null) ? GameManager.Instance.World : null;
+            bool  isRemote   = (hw != null) && hw.IsRemote();
+            bool  hasPrimary = (hw != null) && (hw.GetPrimaryPlayer() != null);
+            int   players    = (hw != null && hw.GetPlayers() != null) ? hw.GetPlayers().Count : -1;
+            Log.Out(
+                $"[CompanionAI][host] hook alive: self={(self != null ? self.entityId : -1)} " +
+                $"world={(hw != null)} isRemote={isRemote} primary={hasPrimary} players={players} " +
+                $"astar={(AstarManager.Instance != null)} pft={(PathFinderThread.Instance != null)} " +
+                $"enabled={HostProbeCfg.Enabled} focus={Application.isFocused}"
+            );
+        }
+
+        // 入力エッジ診断 : このフック文脈で GetKeyDown が生きているかを可視化する。
+        //   - 任意キー押下でこの行が出る               -> Input エッジは有効。F9 だけ効かないならキー横取り。
+        //   - どのキーでも出ない ( かつ focus = true ) -> この文脈で Input が読めない ... 別フック要。
+        private static void LogEdge()
+        {
+            if (!HostProbeCfg.DebugHeartbeat) return;
+            if (!Input.anyKeyDown) return;
+
+            Log.Out("[CompanionAI][host] Input.anyKeyDown edge seen here");
         }
     }
 }

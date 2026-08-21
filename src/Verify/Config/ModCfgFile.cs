@@ -19,7 +19,7 @@
 *
 */
 
-namespace CompanionAIVerify
+namespace CompanionAIVerify.Config
 {
     // --- 外部設定ファイル (companion_config.txt) -------------------------------
     //   Mod フォルダの key=value テキストを起動時＆F8切替時に読込。無ければ既定でテンプレ生成。

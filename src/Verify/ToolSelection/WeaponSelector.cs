@@ -21,7 +21,10 @@
 
 using UnityEngine;
 
-namespace CompanionAIVerify
+using CompanionAIVerify.Combat;
+using CompanionAIVerify.Config;
+
+namespace CompanionAIVerify.ToolSelection
 {
     // --- (A) 武器自動切替 -----------------------------------------------------
     //   ツールベルトの「最初の銃スロット / 最初の近接スロット」をキャッシュし、

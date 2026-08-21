@@ -22,7 +22,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace CompanionAIVerify
+using CompanionAIVerify.Config;
+
+namespace CompanionAIVerify.Perception
 {
     // --- Threat sensing ------------------------------------------------------
     internal static class ThreatScanner

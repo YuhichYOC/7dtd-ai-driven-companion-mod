@@ -21,6 +21,13 @@
 
 using UnityEngine;
 
+using CompanionAIVerify.Combat;
+using CompanionAIVerify.Config;
+using CompanionAIVerify.Perception;
+using CompanionAIVerify.Positioning;
+using CompanionAIVerify.ToolSelection;
+using CompanionAIVerify.Utility;
+
 namespace CompanionAIVerify
 {
     // --- Executor ------------------------------------------------------------

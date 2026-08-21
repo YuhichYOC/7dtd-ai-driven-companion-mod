@@ -21,7 +21,9 @@
 
 using System.Collections.Generic;
 
-namespace CompanionAIVerify
+using CompanionAIVerify.Config;
+
+namespace CompanionAIVerify.ToolSelection
 {
     // --- 武器分類器（stow / select 共用の単一チョークポイント） ---------------
     //   優先: 除外(名前/タグ) > 名前 include > タグ include > auto時のみ型フォールバック。

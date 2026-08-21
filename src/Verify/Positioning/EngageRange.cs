@@ -22,7 +22,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace CompanionAIVerify
+using CompanionAIVerify.Config;
+
+namespace CompanionAIVerify.Positioning
 {
     /// <summary>
     /// Slice A: 現在保持中の武器から「交戦の実効レンジ」をランタイムで読み出す。

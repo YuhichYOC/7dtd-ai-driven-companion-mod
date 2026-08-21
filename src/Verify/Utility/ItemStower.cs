@@ -21,7 +21,10 @@
 
 using UnityEngine;
 
-namespace CompanionAIVerify
+using CompanionAIVerify.Config;
+using CompanionAIVerify.ToolSelection;
+
+namespace CompanionAIVerify.Utility
 {
     // --- (B) ツールベルト優先配置 --------------------------------------------
     //   bag を走査し、武器(銃/近接)をツールベルトへ移送。throttled。

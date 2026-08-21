@@ -19,7 +19,7 @@
 *
 */
 
-namespace CompanionAIVerify
+namespace CompanionAIVerify.Perception
 {
     internal struct ThreatInfo
     {

@@ -22,7 +22,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace CompanionAIVerify
+using CompanionAIVerify.Config;
+
+namespace CompanionAIVerify.Utility
 {
     // --- (C) リーダー落下物拾得 ----------------------------------------------
     //   navigator=null で自律移動不可のため「検知半径内で Collect を撃つ」方針（移動しない）。

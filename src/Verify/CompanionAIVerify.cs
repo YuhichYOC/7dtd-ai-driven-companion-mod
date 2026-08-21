@@ -21,6 +21,8 @@
 
 using HarmonyLib;
 
+using CompanionAIVerify.Config;
+
 // =============================================================================
 // Companion AI verify harness — Build v0.7.1
 //   変更点: 武器認識を config 可能化。単一の WeaponClassifier を新設し、

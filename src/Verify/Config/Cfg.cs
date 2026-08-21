@@ -21,7 +21,7 @@
 
 using UnityEngine;
 
-namespace CompanionAIVerify
+namespace CompanionAIVerify.Config
 {
     // --- Tunables (companion_config.txt で上書き可能) --------------------------
     internal static class Cfg
