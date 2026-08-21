@@ -83,6 +83,8 @@
 // 参照DLL: Assembly-CSharp.dll / UnityEngine.CoreModule.dll / 0Harmony.dll
 // =============================================================================
 
+using System.Linq;
+
 using GamePath;
 using HarmonyLib;
 using UnityEngine;
@@ -114,55 +116,6 @@ namespace CompanionAIVerify.AstarPath
         // 診断: フックが走っているか＆ゲート状態を無条件で吐く（Enabled/F9 と独立）。切り分け後は false へ。
         internal static bool    DebugHeartbeat             = true;
         internal static float   HeartbeatSec               = 2.0f;
-    }
-
-    internal static class WorldInfo
-    {
-        internal static World             World = null;
-        internal static EntityPlayerLocal Leader    = null;
-        internal static EntityPlayer      Companion = null;
-        internal static float             Distance  = 0.0f;
-        internal static float             Now       = 0.0f;
-
-        internal static bool WorldIsNull => World == null;
-        internal static bool LeaderIsNull => Leader == null;
-        internal static bool CompanionIsNull => Companion == null;
-        internal static bool WorldIsRemote => World.IsRemote();
-        internal static bool AstarIsNull => AstarManager.Instance == null;
-        internal static bool PathFinderThreadIsNull => PathFinderThread.Instance == null;
-
-        internal static void FillLeader() => Leader = World.GetPrimaryPlayer();
-        internal static void FillCompanion() => Companion = FindCompanion();
-        internal static void MeasureDistance() => Distance = Vector3.Distance(Companion.position, Leader.position);
-
-        // remote ( = ホスト非ローカル ) な生存プレイヤーからコンパニオンを選ぶ
-        private static EntityPlayer FindCompanion()
-        {
-            var players       = World.GetPlayers();
-            if (players == null) return null;
-
-            string want       = HostProbeCfg.CompanionName;
-            EntityPlayer best = null;
-            float bestSq      = float.MaxValue;
-
-            for (int i = 0; i < players.Count; i++)
-            {
-                EntityPlayer p = players[i];
-                if (p == null || p == Leader) continue;
-                if (!p.isEntityRemote) continue;                            // ホストのローカル(リーダー)を除外
-                if (p.IsDead() || !p.IsSpawned()) continue;
-
-                if (!string.IsNullOrEmpty(want))
-                {
-                    if (p.PlayerDisplayName == want) return p;               // 名前一致を最優先
-                    continue;
-                }
-
-                float sq = (p.position - Leader.position).sqrMagnitude;
-                if (sq < bestSq) { bestSq = sq; best = p; }
-            }
-            return best;
-        }
     }
 
     // --- Harmony patch : ホスト側の毎tickティック源 ---------------------------------------------
@@ -208,7 +161,7 @@ namespace CompanionAIVerify.AstarPath
 
             if (!HostProbeCfg.Enabled) return;
 
-            WorldInfo.World = (GameManager.Instance != null) ? GameManager.Instance.World : null;
+            WorldInfo.FillWorld();
             if (WorldInfo.WorldIsNull) return;
 
             if (!CanRun()) return;
@@ -233,7 +186,7 @@ namespace CompanionAIVerify.AstarPath
             if (!Input.GetKeyDown(HostProbeCfg.ToggleKey)) return;
 
             HostProbeCfg.Enabled = !HostProbeCfg.Enabled;
-            Log.Out("[CompanionAI][host] path-probe = " + HostProbeCfg.Enabled);
+            Log.Out($"[CompanionAI][host] path-probe = {HostProbeCfg.Enabled}");
             if (!HostProbeCfg.Enabled) ResetState();
         }
 
@@ -463,6 +416,47 @@ namespace CompanionAIVerify.AstarPath
             if (!Input.anyKeyDown) return;
 
             Log.Out("[CompanionAI][host] Input.anyKeyDown edge seen here");
+        }
+
+        // World の参照があちこちにある
+        // 一か所に固められる段取りが付けばこのクラスを外に出す
+        private static class WorldInfo
+        {
+            internal static World             World     = null;
+            internal static EntityPlayerLocal Leader    = null;
+            internal static EntityPlayer      Companion = null;
+            internal static float             Distance  = 0.0f;
+            internal static float             Now       = 0.0f;
+
+            internal static bool WorldIsNull => World == null;
+            internal static bool LeaderIsNull => Leader == null;
+            internal static bool CompanionIsNull => Companion == null;
+            internal static bool WorldIsRemote => World.IsRemote();
+            internal static bool AstarIsNull => AstarManager.Instance == null;
+            internal static bool PathFinderThreadIsNull => PathFinderThread.Instance == null;
+
+            internal static void FillWorld() => World = (GameManager.Instance != null) ? GameManager.Instance.World : null;
+            internal static void FillLeader() => Leader = World.GetPrimaryPlayer();
+            internal static void FillCompanion() => Companion = FindCompanion();
+            internal static void MeasureDistance() => Distance = Vector3.Distance(Companion.position, Leader.position);
+
+            // remote ( = ホスト非ローカル ) な生存プレイヤーからコンパニオンを選ぶ
+            private static EntityPlayer FindCompanion()
+            {
+                var players       = World.GetPlayers();
+                if (players == null) return null;
+
+                string want       = HostProbeCfg.CompanionName;
+
+                var candidates = players
+                    .Where(p => p != null)
+                    .Where(p => p != Leader)
+                    .Where(p => p.isEntityRemote)
+                    .Where(p => !p.IsDead())
+                    .Where(p => p.IsSpawned());
+                return candidates.FirstOrDefault(c => c.PlayerDisplayName == want)
+                    ?? candidates.OrderBy(c => (c.position - Leader.position).sqrMagnitude).FirstOrDefault();
+            }
         }
     }
 }

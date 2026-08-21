@@ -52,6 +52,7 @@
 // =============================================================================
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 
@@ -62,47 +63,43 @@ namespace CompanionAIVerify.AstarPath
     internal static class PathWire
     {
         // --- Tunables ---------------------------------------------------------------------------
-        internal const  string Tag             = "~CAIP~";  // 自タグ。人間チャットと衝突しにくく bbcode 文字を含まない
-        internal static bool   SendEnabled     = true;      // 送信の有効/無効
-        internal static int    ChunkChars      = 350;       // 1メッセージあたり payload の最大文字数（点境界で分割）
-        internal static float  SendThrottleSec = 1.5f;      // 送信の最小間隔（状態/点数変化時は即時）
-        internal static float  RxStaleSec      = 5.0f;      // 未完了バッファの破棄猶予
+        internal const  string        Tag             = "~CAIP~";  // 自タグ。人間チャットと衝突しにくく bbcode 文字を含まない
+        internal static bool          SendEnabled     = true;      // 送信の有効 / 無効
+        internal static int           ChunkChars      = 350;       // 1 メッセージあたり payload の最大文字数 ( 点境界で分割 )
+        internal static float         SendThrottleSec = 1.5f;      // 送信の最小間隔 ( 状態 / 点数変化時は即時 )
+        internal static float         RxStaleSec      = 5.0f;      // 未完了バッファの破棄猶予
 
-        // enum メンバは添付enum実体で未確認。コンパイルで弾かれたらここだけ実enumに合わせて差し替え。
+        // enum メンバは添付 enum 実体で未確認。コンパイルで弾かれたらここだけ実 enum に合わせて差し替え。
         //   EChatType.Global / EMessageSender.None は表示側の値で、本経路では抑止するため機能に影響しない。
-        internal const EChatType      WireChatType   = EChatType.Global;
-        internal const EMessageSender WireMsgSender  = EMessageSender.None;
+        internal const EChatType      WireChatType    = EChatType.Global;
+        internal const EMessageSender WireMsgSender   = EMessageSender.None;
 
-        // --- 送信状態（ホスト側）----------------------------------------------------------------
-        private static int   _msgId       = 0;
-        private static float _nextSendTime = 0f;
-        private static string _lastSig    = "";
+        // --- 送信状態 ( ホスト側 ) ----------------------------------------------------------------
+        private static int            _msgId          = 0;
+        private static float          _nextSendTime   = 0.0f;
+        private static string         _lastSig        = string.Empty;
 
         // ============================ ホスト送信 ============================
         internal static void MaybeSendFromHost(EntityPlayer companion, Vector3[] wps, string status)
         {
             if (!SendEnabled || companion == null || wps == null || wps.Length == 0) return;
 
-            GameManager gm = GameManager.Instance;
-            if (gm == null) return;
-            World world = gm.World;
-            if (world == null || world.IsRemote()) return;      // ホスト(サーバ)限定
+            WorldInfo.FillGameManager();
+            WorldInfo.FillWorld();
+            if (WorldInfo.WorldIsNull) return;
+            if (WorldInfo.WorldIsRemote) return;
 
-            float now = Time.time;
-            string sig = status + ":" + wps.Length;             // 状態 or 点数が変われば即送信
-            if (sig == _lastSig && now < _nextSendTime) return;
+            WorldInfo.Now = Time.time;
+            string sig = $"{status}:{wps.Length}";             // 状態 or 点数が変われば即送信
+            if (sig == _lastSig && WorldInfo.Now < _nextSendTime) return;
             _lastSig = sig;
-            _nextSendTime = now + SendThrottleSec;
+            _nextSendTime = WorldInfo.Now + SendThrottleSec;
 
             int msgId = ++_msgId;
             List<string> chunks = Encode(wps, companion.position, status, msgId);
-
             List<int> recipients = new List<int> { companion.entityId };
-            for (int i = 0; i < chunks.Count; i++)
-            {
-                gm.ChatMessageServer(null, WireChatType, -1, chunks[i], recipients, WireMsgSender,
-                                     GeneratedTextManager.BbCodeSupportMode.Supported);
-            }
+            chunks.ForEach(chunk => WorldInfo.GameManager.ChatMessageServer(null, WireChatType, -1, chunk,
+                    recipients, WireMsgSender, GeneratedTextManager.BbCodeSupportMode.Supported));
 
             Vector3 s = wps[0], e = wps[wps.Length - 1];
             Log.Out($"[CompanionAI][host] sent path msgId={msgId} status={status} pts={wps.Length} " +
@@ -116,14 +113,9 @@ namespace CompanionAIVerify.AstarPath
             int az = Mathf.RoundToInt(anchor.z * 100f);
 
             // 各点を anchor 相対 cm 整数の "dx,dy,dz" にする
-            List<string> ptStrs = new List<string>(wps.Length);
-            for (int i = 0; i < wps.Length; i++)
-            {
-                int dx = Mathf.RoundToInt(wps[i].x * 100f) - ax;
-                int dy = Mathf.RoundToInt(wps[i].y * 100f) - ay;
-                int dz = Mathf.RoundToInt(wps[i].z * 100f) - az;
-                ptStrs.Add(dx + "," + dy + "," + dz);
-            }
+            List<string> ptStrs = wps
+                .Select(wp => $"{Mathf.RoundToInt(wp.x * 100f) - ax},{Mathf.RoundToInt(wp.y * 100f) - ay},{Mathf.RoundToInt(wp.z * 100f) - az}")
+                .ToList();
 
             // 点境界で貪欲チャンク（1点が ChunkChars を超える場合も最低1点は入れる）
             List<string> payloads = new List<string>();
@@ -271,6 +263,22 @@ namespace CompanionAIVerify.AstarPath
                     Log.Warning($"[CompanionAI][client] dropped incomplete msgId={drop[i]} (got<total, stale)");
                     _rx.Remove(drop[i]);
                 }
+        }
+
+        // World の参照があちこちにある
+        // 一か所に固められる段取りが付けばこのクラスを外に出す
+        private static class WorldInfo
+        {
+            internal static GameManager       GameManager = null;
+            internal static World             World       = null;
+            internal static float             Now         = 0.0f;
+
+            internal static bool GameManagerIsNull => GameManager == null;
+            internal static bool WorldIsNull => World == null;
+            internal static bool WorldIsRemote => World.IsRemote();
+
+            internal static void FillGameManager() => GameManager = GameManager.Instance;
+            internal static void FillWorld() => World = (GameManager != null) ? GameManager.World : null;
         }
     }
 }
