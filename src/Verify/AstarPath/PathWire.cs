@@ -120,6 +120,7 @@ namespace CompanionAIVerify.AstarPath
             // 点境界で貪欲チャンク（1点が ChunkChars を超える場合も最低1点は入れる）
             List<string> payloads = new List<string>();
             StringBuilder sb = new StringBuilder();
+            // ChunkChars 文字ずつ & アイテムを途中で区切らないように連結しながら ptStrs の内容を payloads へコピーする
             for (int i = 0; i < ptStrs.Count; i++)
             {
                 int add = ptStrs[i].Length + (sb.Length > 0 ? 1 : 0);
@@ -135,106 +136,111 @@ namespace CompanionAIVerify.AstarPath
             if (payloads.Count == 0) payloads.Add("");
 
             int total = payloads.Count;
-            string anchorStr = ax + "," + ay + "," + az;
-            List<string> msgs = new List<string>(total);
-            for (int i = 0; i < total; i++)
-            {
-                msgs.Add(Tag + "|" + msgId + "|" + i + "|" + total + "|" + status + "|" +
-                         wps.Length + "|" + anchorStr + "|" + payloads[i]);
-            }
-            return msgs;
+            string anchorStr = $"{ax},{ay},{az}";
+            // Select((p, i) ... ) ならランタイムが i にアイテムのインデックスをセットしてくれる
+            return [.. payloads.Select((p, i) => $"{Tag}|{msgId}|{i}|{total}|{status}|{wps.Length}|{anchorStr}|{p}")];
         }
 
         // ============================ クライアント受信 ============================
         private class RxBuf
         {
-            public int total, n, ax, ay, az;
-            public string status;
-            public string[] parts;
-            public int got;
-            public float firstSeen;
+            internal int total, n, ax, ay, az;
+            internal string status;
+            internal string[] parts;
+            internal int got;
+            internal float firstSeen;
         }
 
         private static readonly Dictionary<int, RxBuf> _rx = new Dictionary<int, RxBuf>();
+
+        private class Input
+        {
+            internal int msgId, seq, total, n;
+            internal string status;
+            internal int ax, ay, az;
+            internal string payload;
+
+            internal static Input TryParse(string msg)
+            {
+                // Tag|msgId|seq|total|status|n|ax,ay,az|payload -> 8 分割 ( payload に '|' は無い )
+                string[] f = msg.Split(['|'], 8);
+
+                if (f.Length < 8)
+                {
+                    Log.Warning("[CompanionAI][client] malformed chunk (fields < 8)");
+                    return null;
+                }
+
+                if (!int.TryParse(f[1], out int l_msgId) || !int.TryParse(f[2], out int l_seq) ||
+                    !int.TryParse(f[3], out int l_total) || !int.TryParse(f[5], out int l_n))
+                {
+                    Log.Warning("[CompanionAI][client] malformed chunk (header parse)");
+                    return null;
+                }
+
+                string[] a = f[6].Split(',');
+                if (a.Length < 3 || !int.TryParse(a[0], out int l_ax) || !int.TryParse(a[1], out int l_ay) || !int.TryParse(a[2], out int l_az))
+                {
+                    Log.Warning("[CompanionAI][client] malformed chunk (anchor)");
+                    return null;
+                }
+
+                return new Input { msgId = l_msgId, seq = l_seq, total = l_total, n = l_n, status = f[4], ax = l_ax, ay = l_ay, az = l_az, payload = f[7] };
+            }
+        }
 
         internal static void OnChunkClient(string msg)
         {
             PruneStale();
 
-            // Tag|msgId|seq|total|status|n|ax,ay,az|payload  → 8分割（payload に '|' は無い）
-            string[] f = msg.Split(new char[] { '|' }, 8);
-            if (f.Length < 8) { Log.Warning("[CompanionAI][client] malformed chunk (fields<8)"); return; }
-
-            int msgId, seq, total, n;
-            if (!int.TryParse(f[1], out msgId) || !int.TryParse(f[2], out seq) ||
-                !int.TryParse(f[3], out total) || !int.TryParse(f[5], out n))
-            {
-                Log.Warning("[CompanionAI][client] malformed chunk (header parse)");
-                return;
-            }
-            string status = f[4];
-            string[] a = f[6].Split(',');
-            int ax, ay, az;
-            if (a.Length < 3 || !int.TryParse(a[0], out ax) || !int.TryParse(a[1], out ay) || !int.TryParse(a[2], out az))
-            {
-                Log.Warning("[CompanionAI][client] malformed chunk (anchor)");
-                return;
-            }
-            string payload = f[7];
+            var i = Input.TryParse(msg);
+            if (i == null) return;
 
             RxBuf b;
-            if (!_rx.TryGetValue(msgId, out b))
+            if (!_rx.TryGetValue(i.msgId, out b))
             {
-                if (total <= 0) return;
+                if (i.total <= 0) return;
                 b = new RxBuf
                 {
-                    total = total, n = n, status = status, ax = ax, ay = ay, az = az,
-                    parts = new string[total], got = 0, firstSeen = Time.time
+                    total = i.total, n = i.n, status = i.status, ax = i.ax, ay = i.ay, az = i.az,
+                    parts = new string[i.total], got = 0, firstSeen = Time.time
                 };
-                _rx[msgId] = b;
+                _rx[i.msgId] = b;
             }
-            if (seq >= 0 && seq < b.total && b.parts[seq] == null)
+            if (i.seq >= 0 && i.seq < b.total && b.parts[i.seq] == null)
             {
-                b.parts[seq] = payload;
+                b.parts[i.seq] = i.payload;
                 b.got++;
             }
+
+            // まだ全チャンクが到着していない -> 何もしない
             if (b.got < b.total) return;
 
-            // 全チャンク到着 → 再結合
-            _rx.Remove(msgId);
+            // 全チャンク到着 -> 再結合
+            _rx.Remove(i.msgId);
 
-            StringBuilder joined = new StringBuilder();
-            for (int i = 0; i < b.total; i++)
-            {
-                string p = b.parts[i];
-                if (string.IsNullOrEmpty(p)) continue;
-                if (joined.Length > 0) joined.Append(';');
-                joined.Append(p);
-            }
-
-            List<Vector3> pts = new List<Vector3>();
-            if (joined.Length > 0)
-            {
-                string[] pointStrs = joined.ToString().Split(';');
-                for (int i = 0; i < pointStrs.Length; i++)
+            // 送信側が Encode にて点 "dx,dy,dz" を ';' で連結したのと逆の操作で座標を復元する
+            // 「payload を ';' 連結すれば元の点列に戻る」が表すのは以下のコード
+            StringBuilder joined = b.parts.Aggregate(new StringBuilder(), (seed, p) => seed.Append(seed.Length > 0 ? $";{p}" : p));
+            List<Vector3> pts = joined.ToString().Split(';')
+                .Select(p =>
                 {
-                    string ps = pointStrs[i];
-                    if (ps.Length == 0) continue;
-                    string[] c = ps.Split(',');
-                    int dx, dy, dz;
-                    if (c.Length < 3 || !int.TryParse(c[0], out dx) || !int.TryParse(c[1], out dy) || !int.TryParse(c[2], out dz))
+                    string[] c = p.Split(',');
+                    if (c.Length < 3 || !int.TryParse(c[0], out int l_dx) || !int.TryParse(c[1], out int l_dy) || !int.TryParse(c[2], out int l_dz))
                     {
-                        Log.Warning("[CompanionAI][client] malformed point '" + ps + "'");
-                        continue;
+                        Log.Warning($"[CompanionAI][client] malformed point '{p}'");
+                        return new { count = 0, dx = 0, dy = 0, dz = 0 };
                     }
-                    pts.Add(new Vector3((b.ax + dx) / 100f, (b.ay + dy) / 100f, (b.az + dz) / 100f));
-                }
-            }
+                    return new { count = c.Length, dx = l_dx, dy = l_dy, dz = l_dz };
+                })
+                .Where(p => p.count == 3)
+                .Select(p => new Vector3((b.ax + p.dx) / 100.0f, (b.ay + p.dy) / 100.0f, (b.az + p.dz) / 100.0f))
+                .ToList();
 
             Vector3 s = pts.Count > 0 ? pts[0] : Vector3.zero;
             Vector3 e = pts.Count > 0 ? pts[pts.Count - 1] : Vector3.zero;
             string verdict = (pts.Count == b.n) ? "OK" : "COUNT-MISMATCH";
-            Log.Out($"[CompanionAI][client] recv path msgId={msgId} status={b.status} " +
+            Log.Out($"[CompanionAI][client] recv path msgId={i.msgId} status={b.status} " +
                     $"pts={pts.Count}(exp {b.n}) {verdict} chunks={b.total} " +
                     $"start=({s.x:0.0},{s.y:0.0},{s.z:0.0}) end=({e.x:0.0},{e.y:0.0},{e.z:0.0})");
 
@@ -244,6 +250,7 @@ namespace CompanionAIVerify.AstarPath
                 PathFollowState.SetPath(pts.ToArray(), b.status);
         }
 
+        // 期限切れの RxBuf を _rx から削除する
         private static void PruneStale()
         {
             if (_rx.Count == 0) return;
