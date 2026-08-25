@@ -23,11 +23,13 @@ namespace CompanionAIVerify.Combat.Validate
 {
     internal class ReachValidator
     {
-        private Info _i;
+        private InfoHolder _i;
+        private LogInfoHolder _li;
 
-        internal ReachValidator(Info i)
+        internal ReachValidator(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
+            _li = li;
         }
 
         // ★ v0.8(C)

@@ -23,11 +23,13 @@ namespace CompanionAIVerify.Combat.Operate
 {
     internal class SwitchOperation
     {
-        private Info _i;
+        private InfoHolder _i;
+        private LogInfoHolder _li;
 
-        internal SwitchOperation(Info i)
+        internal SwitchOperation(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
+            _li = li;
         }
 
         internal void Run()

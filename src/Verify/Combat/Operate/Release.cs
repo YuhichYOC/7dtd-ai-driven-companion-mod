@@ -23,11 +23,13 @@ namespace CompanionAIVerify.Combat.Operate
 {
     internal class ReleaseOperation
     {
-        private Info _i;
+        private InfoHolder _i;
+        private LogInfoHolder _li;
 
-        internal ReleaseOperation(Info i)
+        internal ReleaseOperation(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
+            _li = li;
         }
 
         internal void Run()

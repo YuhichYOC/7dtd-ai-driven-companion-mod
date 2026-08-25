@@ -23,5 +23,13 @@ namespace CompanionAIVerify.Combat.Operate
 {
     internal class AimOperation
     {
+        private InfoHolder _i;
+        private LogInfoHolder _li;
+
+        internal AimOperation(InfoHolder i, LogInfoHolder li)
+        {
+            _i = i;
+            _li = li;
+        }
     }
 }

@@ -23,6 +23,10 @@ namespace CompanionAIVerify.Combat.Scene
 {
     internal class LogInfoHolder
     {
+        // CombatDriver の持つ状態のうちログに関するものを LogInfo にまとめる
+        //
+        // Log クラスも同居させる
+
         private float _nextEngageLogTime;
         internal float NextEngageLogTime { get => _nextEngageLogTime; set => _nextEngageLogTime = value; }
 
@@ -32,5 +36,12 @@ namespace CompanionAIVerify.Combat.Scene
         private float _nextBowLogTime;
         internal float NextBowLogTime { get => _nextBowLogTime; set => _nextBowLogTime = value; }
 
+        private Log _log;
+        internal Log Log { get => _log; }
+
+        internal LogInfoHolder()
+        {
+            _log = new Log();
+        }
     }
 }

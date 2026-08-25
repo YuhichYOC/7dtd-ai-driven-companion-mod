@@ -23,11 +23,20 @@ namespace CompanionAIVerify.Combat.Operate
 {
     internal class Log
     {
-        private LogInfo _i;
+        private LogInfoHolder _i;
 
-        internal Log(LogInfo i)
+        internal Log(LogInfoHolder i)
         {
             _i = i;
+        }
+
+        internal void LogMeleeSwing(InfoHolder i)
+        {
+            if (Time.time >= _i.NextEngageLogTime)
+            {
+                _i.NextEngageLogTime = Time.time + Cfg.LogThrottleSec;
+                Log.Out($"[CompanionAI] engage: swing {i.Target.Kind} {i.Target.State} d={i.Distance:0.0}m reach={i.Reach:0.0}m");
+            }
         }
     }
 }

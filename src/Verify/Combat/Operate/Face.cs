@@ -1,6 +1,6 @@
 /*
 *
-* ADS.cs
+* Face.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -21,27 +21,31 @@
 
 namespace CompanionAIVerify.Combat.Operate
 {
-    internal class ADSOperation
+    internal class FaceOperation
     {
         private InfoHolder _i;
         private LogInfoHolder _li;
 
-        internal ADSOperation(InfoHolder i, LogInfoHolder li)
+        internal FaceOperation(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
             _li = li;
         }
 
-        // ADS ( サイト覗き ) 状態を変化時のみ切替
-        // AimingGun setter は FOV / animator / Actions[1] に副作用があるため冪等呼び出しを避ける
-        // secondary action を持たない銃では発動しない
-        internal void Run(bool on)
+        // ピッチ込みで対象中心付近を狙う
+        // 低い脅威にも当てるため y を潰さない
+        // 変換式は facing と同一 ( EPL : 2310, 248-252
+        // camera 経由で攻撃レイが操舵される
+        internal void Run()
         {
-            if (on && !Cfg.AimDownSightsOnEngage) on = false;
-            if (on && !_i.CanAimDownSights()) on = false;
-            if (on == _i.AdsOn) return;
-            _i.AdsOn = on;
-            _i.Self.AimingGun = on; // 拡散 hip ( 1.0 ) <-> aiming ( 0.1 ) を切替 ( ItemActionRanged : 748, 1346 )
+            Vector3 eye = _i.Self.position + Vector3.up * 1.5f;   // 概算カメラ高
+            Vector3 aim = _i.Target.position + Vector3.up * 0.9f; // 概算胴中心
+            Vector3 dir = aim - eye;
+            if (dir.sqrMagnitude < 1e-6f) return;
+
+            Vector3 euler = Quaternion.LookRotation(dir.normalized, Vector3.up).eulerAngles;
+            euler.x *= -1f; // ピッチ反転（EPL:239, 251）
+            _i.Self.SetRotation(euler);
         }
     }
 }
