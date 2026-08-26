@@ -1,6 +1,6 @@
 /*
 *
-* Info.cs
+* InfoHolder.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -45,8 +45,8 @@ namespace CompanionAIVerify.Combat.Scene
         private float _distance;
         internal float Distance { get => _distance; }
 
-        private bool _targetInReach;
-        internal bool TargetInReach { set => _targetInReach = value; get => _targetInReach; }
+        private float _fireMax;
+        internal float FireMax { set => _fireMax = value; get => _fireMax; }
 
         private bool _attackPressed;
         internal bool AttackPressed { set => _attackPressed = value; get => _attackPressed; }
@@ -63,22 +63,34 @@ namespace CompanionAIVerify.Combat.Scene
         private bool _adsOn;
         internal bool AdsOn { set => _adsOn = value; get => _adsOn; }
 
-        private ReachValidator _reach;
-        internal ReachValidator ReachValidator { get => _reach; }
+        private ADSOperation _adsOperation;
+        internal ADSOperation ADSOperation { get => _adsOperation; }
 
-        private ADSOperation _ads;
-        internal ADSOperation ADSOperation { get => _ads; }
+        private AimOperation _aimOperation;
+        internal AimOperation AimOperation { get => _aimOperation; }
 
-        private AimOperation _aim;
-        internal AimOperation AimOperation { get => _aim; }
+        private FaceOperation _faceOperation;
+        internal FaceOperation FaceOperation { get => _faceOperation; }
 
-        private ReleaseOperation _release;
-        internal ReleaseOperation ReleaseOperation { get => _release; }
+        private ReleaseOperation _releaseOperation;
+        internal ReleaseOperation ReleaseOperation { get => _releaseOperation; }
 
-        private SwitchOperation _switch;
-        internal SwitchOperation SwitchOperation { get => _switch; }
+        private SwingOperation _swingOperation;
+        internal SwingOperation SwingOperation { get => _swingOperation; }
 
-        internal Info(EntityPlayerLocal s, ThreatInfo t, bool r)
+        private SwitchOperation _switchOperation;
+        internal SwitchOperation SwitchOperation { get => _switchOperation; }
+
+        private ADSActionValidator _adsActionValidator;
+        internal ADSActionValidator ADSActionValidator { get => _adsActionValidator; }
+
+        private ApprovementValidator _approvementValidator;
+        internal ApprovementValidator ApprovementValidator { get => _approvementValidator; }
+
+        private ReachValidator _reachValidator;
+        internal ReachValidator ReachValidator { get => _reachValidator; }
+
+        internal Info(EntityPlayerLocal s, ThreatInfo t, bool r, LogInfoHolder li)
         {
             _self = s;
             _target = t;
@@ -90,11 +102,15 @@ namespace CompanionAIVerify.Combat.Scene
             _firePressed = false;
             _bowDrawing = false;
             _adsOn = false;
-            _reach = new ReachValidator(this);
-            _ads = new ADSOperation(this);
-            _aim = new AimOperation(this);
-            _release = new ReleaseOperation(this);
-            _switch = new SwitchOperation(this);
+            _adsOperation = new ADSOperation(this, li);
+            _aimOperation = new AimOperation(this, li);
+            _faceOperation = new FaceOperation(this, li);
+            _releaseOperation = new ReleaseOperation(this, li);
+            _swingOperation = new SwingOperation(this, li);
+            _switchOperation = new SwitchOperation(this, li);
+            _adsActionValidator = new ADSActionValidator(this, li);
+            _approvementValidator = new ApprovementValidator(this, li);
+            _reachValidator = new ReachValidator(this, li);
         }
 
         // 保持アイテムの実効リーチ
@@ -134,17 +150,14 @@ namespace CompanionAIVerify.Combat.Scene
             return new Tuple<ItemActionCatapult, ItemActionCatapult.ItemActionDataCatapult>(cat, hid.actionData[0] as ItemActionCatapult.ItemActionDataCatapult);
         }
 
-        // ADS 可否
-        // secondary action ( Actions[1] ) と actionData[1] が存在すること
-        // AimingGun setter が actionData[1] を直接参照 = 境界外で例外になるためのガード
-        internal bool CanAimDownSights()
+        // 保持中アイテムの装填残弾 ( Meta )
+        // 取得不可は -1
+        // A4 : holdingItemItemValue.Meta
+        internal int GetHoldingMeta()
         {
             var inv = _self.inventory;
-            var hi  = inv != null ? inv.holdingItem : null;
-            var hid = inv != null ? inv.holdingItemData : null;
-            return hi != null && hi.Actions != null && hi.Actions.Length >= 2 && 
-                hi.Actions[1] != null && hid != null && hid.actionData != null &&
-                hid.actionData.Count >= 2;
+            var iv  = inv != null ? inv.holdingItemItemValue : null;
+            return iv != null ? iv.Meta : -1;
         }
 
 #endregion -- 外から呼び出す可能性のある属性 --

@@ -1,6 +1,6 @@
 /*
 *
-* Release.cs
+* FaceOperation.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -21,29 +21,31 @@
 
 namespace CompanionAIVerify.Combat.Operate
 {
-    internal class SwitchOperation
+    internal class FaceOperation
     {
         private InfoHolder _i;
         private LogInfoHolder _li;
 
-        internal SwitchOperation(InfoHolder i, LogInfoHolder li)
+        internal FaceOperation(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
             _li = li;
         }
 
+        // ピッチ込みで対象中心付近を狙う
+        // 低い脅威にも当てるため y を潰さない
+        // 変換式は facing と同一 ( EPL : 2310, 248-252
+        // camera 経由で攻撃レイが操舵される
         internal void Run()
         {
-            // ★ v0.7(A)
-            // 交戦距離に応じた武器自動切替
-            // 切替した frame は settle のため即 return
-            WeaponSelector.RefreshLoadout(_i.Self, force: false);
-            if (Cfg.AutoWeaponSwitch && WeaponSelector.MaybeSwitch(_i.Self, _i.Distance))
-            {
-                // ★ [bow] 切替で武器が変わる前に、押下中のトリガー / ドローを安全開放する
-                //   弓ドロー中は release = 発射になるため、ここを通さないと切替の瞬間に暴発しうる
-                _i.ReleaseOperation.Run();
-            }
+            Vector3 eye = _i.Self.position + Vector3.up * 1.5f;   // 概算カメラ高
+            Vector3 aim = _i.Target.position + Vector3.up * 0.9f; // 概算胴中心
+            Vector3 dir = aim - eye;
+            if (dir.sqrMagnitude < 1e-6f) return;
+
+            Vector3 euler = Quaternion.LookRotation(dir.normalized, Vector3.up).eulerAngles;
+            euler.x *= -1f; // ピッチ反転（EPL:239, 251）
+            _i.Self.SetRotation(euler);
         }
     }
 }

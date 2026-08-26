@@ -1,6 +1,6 @@
 /*
 *
-* LogInfo.cs
+* LogInfoHolder.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -19,7 +19,7 @@
 *
 */
 
-namespace CompanionAIVerify.Combat.Scene
+namespace CompanionAIVerify.Combat.Log
 {
     internal class LogInfoHolder
     {
@@ -28,20 +28,24 @@ namespace CompanionAIVerify.Combat.Scene
         // Log クラスも同居させる
 
         private float _nextEngageLogTime;
-        internal float NextEngageLogTime { get => _nextEngageLogTime; set => _nextEngageLogTime = value; }
+        internal float NextEngageLogTime { set => _nextEngageLogTime = value; get => _nextEngageLogTime; }
 
         private float _nextHoldLogTime;
-        internal float NextHoldLogTime { get => _nextHoldLogTime; set => _nextHoldLogTime = value; }
+        internal float NextHoldLogTime { set => _nextHoldLogTime = value; get => _nextHoldLogTime; }
 
         private float _nextBowLogTime;
-        internal float NextBowLogTime { get => _nextBowLogTime; set => _nextBowLogTime = value; }
+        internal float NextBowLogTime { set => _nextBowLogTime = value; get => _nextBowLogTime; }
 
-        private Log _log;
-        internal Log Log { get => _log; }
+        private int _lastMeta;
+        internal int LastMeta { set => _lastMeta = value; get => _lastMeta; }
+
+        private Logger _logger;
+        internal Logger Logger { get => _logger; }
 
         internal LogInfoHolder()
         {
-            _log = new Log();
+            _lastMeta = int.MinValue;
+            _logger = new Logger(this);
         }
     }
 }

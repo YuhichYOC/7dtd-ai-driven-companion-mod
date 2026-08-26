@@ -1,6 +1,6 @@
 /*
 *
-* Swing.cs
+* SwingOperation.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -46,11 +46,6 @@ namespace CompanionAIVerify.Combat.Operate
         //       ダメージ同期は Attack() -> DamageEntity() -> NetPackageDamageEntity 経由で別途成立 ( attackTarget 非依存 )
         internal void Run()
         {
-            if (Cfg.MeleeAimAssist)
-            {
-                _i.Self.attackTarget = _i.Target.Target; // EntityAlive : 716 ( public field ) — client-safe
-                _i.AimAssistSet = true;
-            }
             if (_i.Self.Attack(false)) // press。ケイデンスは canStartAttack の APM 律速が制御
             {
                 _i.FirePressed = true;

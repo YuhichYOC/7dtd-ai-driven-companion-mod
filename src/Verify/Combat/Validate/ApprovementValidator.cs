@@ -1,6 +1,6 @@
 /*
 *
-* Log.cs
+* ApprovementValidator.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -19,24 +19,23 @@
 *
 */
 
-namespace CompanionAIVerify.Combat.Operate
-{
-    internal class Log
-    {
-        private LogInfoHolder _i;
+using System.Reflection.PortableExecutable;
 
-        internal Log(LogInfoHolder i)
+namespace CompanionAIVerify.Combat.Validate
+{
+    internal class ApprovementValidator
+    {
+        private InfoHolder _i;
+        private LogInfoHolder _li;
+
+        internal ApprovementValidator(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
+            _li = li;
         }
 
-        internal void LogMeleeSwing(InfoHolder i)
-        {
-            if (Time.time >= _i.NextEngageLogTime)
-            {
-                _i.NextEngageLogTime = Time.time + Cfg.LogThrottleSec;
-                Log.Out($"[CompanionAI] engage: swing {i.Target.Kind} {i.Target.State} d={i.Distance:0.0}m reach={i.Reach:0.0}m");
-            }
-        }
+        internal bool EngageApproved() => Cfg.CombatMode;
+
+        internal bool FireApproved() => CorFlags.EnableRangedFire;
     }
 }

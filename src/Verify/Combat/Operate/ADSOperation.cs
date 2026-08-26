@@ -1,6 +1,6 @@
 /*
 *
-* ADS.cs
+* ADSOperation.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -38,7 +38,8 @@ namespace CompanionAIVerify.Combat.Operate
         internal void Run(bool on)
         {
             if (on && !Cfg.AimDownSightsOnEngage) on = false;
-            if (on && !_i.CanAimDownSights()) on = false;
+            _i.ADSActionValidator.Run();
+            if (on && !_i.CanAds) on = false;
             if (on == _i.AdsOn) return;
             _i.AdsOn = on;
             _i.Self.AimingGun = on; // 拡散 hip ( 1.0 ) <-> aiming ( 0.1 ) を切替 ( ItemActionRanged : 748, 1346 )

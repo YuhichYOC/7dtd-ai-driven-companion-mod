@@ -1,6 +1,6 @@
 /*
 *
-* Reach.cs
+* ReachValidator.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -41,26 +41,22 @@ namespace CompanionAIVerify.Combat.Validate
         //   d は feet-to-feet、実際の弾は camera -> aimPoint なので安全係数 ( 既定 0.85 ) で余裕を持たせる
         //   ※ [bow] 弓も ItemActionRanged 派生なので GetRange が取れる。ただし矢は放物線弾道で直線射程とズレる
         //     fireShot は無効化 : Launcher:120-125。落下 / リードの弾道補正は本スライスのスコープ外とする
-        internal void Run()
+        internal bool TargetInReach()
         {
             float reach = _i.Reach;
             float d = _i.Distance;
             if (_i.Ranged)
             {
-                _i.TargetInReach = true;
                 float fireMax = Cfg.RangedMaxEngageMeters;
                 EngageRange.Info erC = EngageRange.Read(_self);
                 if (erC.valid && erC.isRanged && erC.range > 0.01f)
                     fireMax = Mathf.Min(fireMax, erC.range * Cfg.RangedRangeSafety);
 
-                if (_i.Distance > fireMax)
-                {
-                    _i.TargetInReach = false;
-                }
+                return _i.Distance <= fireMax;
             }
             else
             {
-                _i.TargetInReach = _i.Distance <= _i.Reach + Cfg.ReachBuffer;
+                return _i.Distance <= _i.Reach + Cfg.ReachBuffer;
             }
         }
     }
