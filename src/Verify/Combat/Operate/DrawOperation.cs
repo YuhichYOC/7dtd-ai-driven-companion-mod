@@ -30,6 +30,17 @@ namespace CompanionAIVerify.Combat.Operate
 
         internal bool BowHolding { get => _bow.Item1 != null && _bow.Item2 != null; }
 
+        internal bool ActionActivated { get => _bow.Item2.m_bActivated; }
+
+        private bool _drawing;
+        internal bool Drawing { set => _drawing = value; get => _drawing; }
+
+        private bool _pressed;
+        internal bool Pressed { set => _pressed = value; get => _pressed; }
+
+        private float _bowNextTry;
+        internal float BowNextTry { set => _bowNextTry = value; get => _bowNextTry; }
+
         internal DrawOperation(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
@@ -38,30 +49,13 @@ namespace CompanionAIVerify.Combat.Operate
 
         internal void Init() => _bow = _i.GetHeldCatapult();
 
-        internal void CancelDrawing()
+        internal void CancelDrawing(bool cancelAction)
         {
-            if (!Cfg.BowChargeEnabled)
+            if (cancelAction)
             {
-                // ドロー無効時は弓を撃たない
-                // ドローなしでは strain ≈ 0 で実用にならない
-                // ドロー中なら安全に引き戻す
-                if (_i.BowDrawing)
-                {
-                    _bow.Item1.CancelAction(_bow.Item2);
-                    _i.BowDrawing = false;
-                }
+                _bow.Item1.CancelAction(_bow.Item2);
             }
-
-            // ゲーム側キャンセル
-            //   Catapult : 141 - 145 等
-            //     - 矢切れ
-            //     - 武器切替
-            //     - TP カメラ NG
-            // で活性が落ちたら状態同期
-            if (_i.BowDrawing && _bow.Item2.m_bActivated)
-            {
-                _i.BowDrawing = false;
-            }
+            _i.BowDrawing = false;
         }
     }
 }

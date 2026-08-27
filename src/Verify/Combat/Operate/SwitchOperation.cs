@@ -26,6 +26,9 @@ namespace CompanionAIVerify.Combat.Operate
         private InfoHolder _i;
         private LogInfoHolder _li;
 
+        private bool _switched;
+        internal bool Switched { get => _switched; }
+
         internal SwitchOperation(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
@@ -34,6 +37,7 @@ namespace CompanionAIVerify.Combat.Operate
 
         internal void Run()
         {
+            _switched = false;
             // ★ v0.7(A)
             // 交戦距離に応じた武器自動切替
             // 切替した frame は settle のため即 return
@@ -43,6 +47,7 @@ namespace CompanionAIVerify.Combat.Operate
                 // ★ [bow] 切替で武器が変わる前に、押下中のトリガー / ドローを安全開放する
                 //   弓ドロー中は release = 発射になるため、ここを通さないと切替の瞬間に暴発しうる
                 _i.ReleaseOperation.Run();
+                _switched = true;
             }
         }
     }

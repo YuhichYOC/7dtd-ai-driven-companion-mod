@@ -48,21 +48,6 @@ namespace CompanionAIVerify.Combat.Scene
         private float _fireMax;
         internal float FireMax { set => _fireMax = value; get => _fireMax; }
 
-        private bool _attackPressed;
-        internal bool AttackPressed { set => _attackPressed = value; get => _attackPressed; }
-
-        private bool _aimAssistSet;
-        internal bool AimAssistSet { set => _aimAssistSet = value; get => _aimAssistSet; }
-
-        private bool _firePressed;
-        internal bool FirePressed { set => _firePressed = value; get => _firePressed; }
-
-        private bool _bowDrawing;
-        internal bool BowDrawing { set => _bowDrawing = value; get => _bowDrawing; }
-
-        private bool _adsOn;
-        internal bool AdsOn { set => _adsOn = value; get => _adsOn; }
-
         private ADSOperation _adsOperation;
         internal ADSOperation ADSOperation { get => _adsOperation; }
 
@@ -97,11 +82,6 @@ namespace CompanionAIVerify.Combat.Scene
             _ranged = r;
             _reach = GetAttackReach(_self);
             _distance = Mathf.Sqrt(_target.DistSq);
-            _attackPressed = false;
-            _aimAssistSet = false;
-            _firePressed = false;
-            _bowDrawing = false;
-            _adsOn = false;
             _adsOperation = new ADSOperation(this, li);
             _aimOperation = new AimOperation(this, li);
             _faceOperation = new FaceOperation(this, li);
@@ -130,7 +110,7 @@ namespace CompanionAIVerify.Combat.Scene
 
         internal bool CombatActivated() => Cfg.CombatMode && _target.Valid;
 
-        // ★ [bow] 保持中アイテムが弓/クロスボウ(ItemActionCatapult)なら action と data を返す
+        // ★ [bow] 保持中アイテムが弓 / クロスボウ ( ItemActionCatapult ) なら action と data を返す
         //   違えば null
         //   継承 : ItemActionCatapult : ItemActionLauncher : ItemActionRanged ( Launcher.cs:7 で確認 )
         //   ItemActionDataCatapult は publicize 済みで外部参照可 ( m_bActivated / m_ActivateTime / m_MaxStrainTime は public フィールド )

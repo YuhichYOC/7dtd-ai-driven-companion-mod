@@ -26,6 +26,9 @@ namespace CompanionAIVerify.Combat.Operate
         private InfoHolder _i;
         private LogInfoHolder _li;
 
+        private bool _aimAssistSet;
+        internal bool AimAssistSet { set => _aimAssistSet = value; get => _aimAssistSet; }
+
         private Vector3 _camWorld;
         internal Vector3 CamWorld { get => _camWorld; }
 
@@ -56,6 +59,17 @@ namespace CompanionAIVerify.Combat.Operate
             _li = li;
         }
 
+        // ★ v0.8(B)-A
+        // 近接レイをターゲットのチェストへ自動補正させる
+        //   ItemActionDynamic.GetExecuteActionTarget は attackTarget != null のとき ray を getChestPosition() 方向へ差し替える ( ItemActionDynamic : 327-330 )
+        //   これで FaceTarget3D の平面精度に依存せず命中が安定する
+        //
+        //   ※ client では SetAttackTarget() を使えない : 内部で world.entityDistributer.SendPacket を叩くが entityDistributer は IsServer 時のみ生成される ( World : 468-477 ) ため client では null -> NRE
+        //     さらに attackTargetTime > 0 にすると自動失効パス ( EntityAlive : 3367-3376 ) も同じ null を踏む
+        //     -> public フィールドへ直接代入し、attackTargetTime は 0 のまま ( 失効パスに入らせない )
+        //       解除は ReleaseIfPressed で直接 null 代入
+        //       redirect は attackTarget を読むだけ ( GetAttackTarget : 5890 ) なので十分
+        //       ダメージ同期は Attack() -> DamageEntity() -> NetPackageDamageEntity 経由で別途成立 ( attackTarget 非依存 )
         internal void MeleeAim()
         {
             if (Cfg.MeleeAimAssist)

@@ -59,25 +59,25 @@ namespace CompanionAIVerify.Combat.Log
             }
         }
 
-        internal void LogShootableNotFound(InfoHolder i, AimOperation ao)
+        internal void LogShootableNotFound(InfoHolder i)
         {
             if (Time.time >= _i.NextHoldLogTime)
             {
                 _i.NextHoldLogTime = Time.time + Cfg.LogThrottleSec;
-                Log.Out($"[CompanionAI] hold: {i.Target.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m reason={ao.ReasonCantShoot}");
+                Log.Out($"[CompanionAI] hold: {i.Target.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m reason={i.AimOperation.ReasonCantShoot}");
             }
         }
 
-        internal void LogFriendlyInLineOfFire(InfoHolder i, ShootableValidator sv)
+        internal void LogFriendlyInLineOfFire(InfoHolder i)
         {
             if (Time.time >= _i.NextHoldLogTime)
             {
                 _i.NextHoldLogTime = Time.time + Cfg.LogThrottleSec;
-                Log.Out($"[CompanionAI] hold: {i.Target.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m reason=FF id={sv.FFFriendlies.First().entityId}");
+                Log.Out($"[CompanionAI] hold: {i.Target.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m reason=FF id={i.ShootableValidator.FFFriendlies.First().entityId}");
             }
         }
 
-        internal void LogFire(InfoHolder i, AimOperation ao, bool fullAuto, int after, int before)
+        internal void LogFire(InfoHolder i, bool fullAuto, int after, int before)
         {
             if (after < 0 || before < 0) return;
             if (after < before) // 実発砲
@@ -87,7 +87,7 @@ namespace CompanionAIVerify.Combat.Log
                     : (hitE.entityId == i.Target.Target.entityId ? "TARGET" : "OTHER id=" + hitE.entityId);
                 Log.Out(
                     $"[CompanionAI] fire: {i.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m " +
-                    $"mag={after} aim={ao.Mode}({ao.Part}) auto={(fullAuto ? "on" : "off")} " +
+                    $"mag={after} aim={i.AimOperation.Mode}({i.AimOperation.Part}) auto={(fullAuto ? "on" : "off")} " +
                     $"ads={(i.Self.AimingGun ? "on" : "off")} -> hit={hitDesc}"
                 );
             }
@@ -101,6 +101,16 @@ namespace CompanionAIVerify.Combat.Log
                 Log.Out($"[CompanionAI] reload: done, mag={after}");
             }
             _i.LastMeta = after;
+        }
+
+        internal void LogFPV(InfoHolder i, bool fpv)
+        {
+            Log.Out($"[CompanionAI] engage-precheck: bFirstPersonView={fpv} TPCam={i.Self.TPCameraCheckResult} camPassed={i.Self.TPCameraCheckPassed}");
+        }
+
+        internal void LogFPV(InfoHolder i)
+        {
+            Log.Out("[CompanionAI] engage-precheck: forced bFirstPersonView=true (ForceFirstPerson).");
         }
     }
 }

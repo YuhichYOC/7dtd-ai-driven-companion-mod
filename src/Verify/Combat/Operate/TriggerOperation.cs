@@ -28,36 +28,59 @@ namespace CompanionAIVerify.Combat.Operate
 
         private float _nextFireTime;
 
+        private bool _pressed;
+        internal bool Pressed { set => _pressed = value; get => _pressed; }
+
         internal TriggerOperation(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
             _li = li;
         }
 
-        internal void FullAutoReload()
+        // ★ ( 3 ) フルオート判定して駆動
+        internal void Run()
         {
-            // ★ v0.6.1 空リロード
-            // リロードは release エッジ ( bReleased ) が要る ( ItemActionRanged : 1236 `if (bReleased) ~ if (CanReload) requestReload` )
-            //   フルオートは hold で離さないため bReleased が立たず自動リロードしない
-            //   -> 空の間だけ release -> press を交互に打ってエッジを作り、リロードを発火させる
-            //     CanReload に ADS ゲートは無い = ItemActionRanged : 872 -> ADS 解除は不要
+            if (Cfg.FullAutoHold && _i.FullAutoValidator.IsFullAuto())
+            {
+                if (_i.GetHoldingMeta() == 0)
+                {
+                    FullAutoReload();
+                }
+                else
+                {
+                    FullAutoFire();
+                }
+            }
+            else
+            {
+                SemiAutoFire();
+            }
+        }
+
+        // ★ v0.6.1 フルオート マガジン空 リロード
+        // リロードは release エッジ ( bReleased ) が要る ( ItemActionRanged : 1236 `if (bReleased) ~ if (CanReload) requestReload` )
+        //   フルオートは hold で離さないため bReleased が立たず自動リロードしない
+        //   -> 空の間だけ release -> press を交互に打ってエッジを作り、リロードを発火させる
+        //     CanReload に ADS ゲートは無い = ItemActionRanged : 872 -> ADS 解除は不要
+        private void FullAutoReload()
+        {
             if (_i.FirePressed) { _i.Self.Attack(true);  _i.FirePressed = false; } // release ( bReleased 立て )
             else                { _i.Self.Attack(false); _i.FirePressed = true;  } // press ( empty -> requestReload )
         }
 
-        internal void FullAutoFire()
+        // フルオート マガジン弾あり 発砲
+        // トリガー保持で RPM 連射 ( Delay がケイデンスを律速 )
+        // 離しは disengage 時のみ
+        private void FullAutoFire()
         {
-            // 弾あり
-            // トリガー保持で RPM 連射 ( Delay がケイデンスを律速 )
-            // 離しは disengage 時のみ
             _i.Self.Attack(false);
             _i.FirePressed = true;
         }
 
-        internal void SemiAutoFire()
+        // セミ & バースト
+        // press(N) -> release(N+1) を FireInterval ごと
+        private void SemiAutoFire()
         {
-            // セミ & バースト
-            // press(N) -> release(N+1) を FireInterval ごと
             if (_i.FirePressed)
             {
                 _i.Self.Attack(true);

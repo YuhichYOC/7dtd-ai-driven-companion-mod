@@ -1,6 +1,6 @@
 /*
 *
-* Trigger.cs
+* Melee.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -21,12 +21,12 @@
 
 namespace CompanionAIVerify.Combat
 {
-    internal class Trigger
+    internal class Draw
     {
         private InfoHolder _i;
         private LogInfoHolder _li;
 
-        internal Trigger(InfoHolder i, LogInfoHolder li)
+        internal Draw(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
             _li = li;
@@ -90,8 +90,40 @@ namespace CompanionAIVerify.Combat
             // ★ ( 2 ) 発砲準備 : ADS + カメラを狙点へスナップ
             _i.AimOperation.RangeAimSnapCamera();
 
-            // ★ ( 3 ) フルオート判定して駆動
-            _i.TriggerOperation.Run();
+            // ★ 弓, ドローを含めた射撃処理
+            // クロスボウはドロー操作がないので Trigger で処理する
+            _i.DrawOperation.Init();
+            if (!_i.ApprovementValidator.BowDrawApproved())
+            {
+                // ドロー無効時は弓を撃たない
+                // ドローなしでは strain ≈ 0 で実用にならない
+                // ドロー中なら安全に引き戻す
+                _i.DrawOperation.CancelDrawing(true);
+                return;
+            }
+            if (_i.DrawOperation.BowDrawing && !_i.DrawOperation.ActionActivated)
+            {
+                // ゲーム側キャンセル
+                //   Catapult : 141 - 145 等
+                //     - 矢切れ
+                //     - 武器切替
+                //     - TP カメラ NG
+                // で活性が落ちたら状態同期
+                _i.DrawOperation.CancelDrawing(false);
+            }
+
+            if (!_i.DrawOperation.BowDrawing)
+            {
+                // 発射直後の再ドロー抑制
+                // 無駄 press とログの間引き。連射律速はゲーム Delay が担保
+                if (Time.time < _i.DrawOperation.BowNextTry)
+                {
+                    return;
+                }
+
+                int metaBefore = _i.GetHoldingMeta();
+                _i.Self.Attack(false); // press -> ExecuteAction(false)
+            }
         }
     }
 }

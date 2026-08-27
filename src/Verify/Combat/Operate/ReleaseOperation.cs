@@ -44,10 +44,10 @@ namespace CompanionAIVerify.Combat.Operate
 
         private void ReleaseMelee()
         {
-            if (_i.AttackPressed)
+            if (_i.SwingOperation.Pressed)
             {
                 _i.Self.Attack(true); // release ( スイングの後始末 )
-                _i.AttackPressed = false;
+                _i.SwingOperation.Pressed = false;
             }
             // v0.8(B)-A: 張っていた aim-assist の attackTarget を解除。
             //   client では SetAttackTarget(null,0) も entityDistributer.SendPacket(EntityAlive:5932)で NRE になるため
@@ -63,19 +63,28 @@ namespace CompanionAIVerify.Combat.Operate
         // ADS も解除
         private void ReleaseRanged()
         {
-            // ★ [bow] 弓ドロー中は release=発射になる。開放要求は「キャンセル（矢を消費しない引き戻し）」へ
-            //   振り替えて暴発を防ぐ。CancelAction は m_bActivated 中に triggerReleased して活性を落とす
-            //   （矢は ConsumeAmmo を通らないため消費されない, ItemActionCatapult:176-196）。
-            if (_i.BowDrawing)
-            {
-                var bow = _i.GetHeldCatapult();
-                if (bow.Item1 != null && bow.Item2 != null) bow.Item1.CancelAction(bow.Item2);
-                _i.BowDrawing = false; // 武器が既に切替済み(cat==null)でもフラグは必ず落とす（StopHolding が旧弓を CancelAction 済み）
-            }
-            if (_i.FirePressed)
+            if (_i.TriggerOperation.Pressed)
             {
                 _i.Self.Attack(true);
-                _i.FirePressed = false;
+                _i.TriggerOperation.Pressed = false;
+            }
+            else if (_i.DrawOperation.Pressed)
+            {
+                // ★ [bow] 弓ドロー中は release = 発射になる
+                // 開放要求は「キャンセル ( 矢を消費しない引き戻し ) 」へ振り替えて暴発を防ぐ
+                // CancelAction は m_bActivated 中に triggerReleased して活性を落とす
+                // 矢は ConsumeAmmo を通らないため消費されない ( ItemActionCatapult : 176-196 )
+                if (_i.DrawOperation.BowDrawing)
+                {
+                    var bow = _i.GetHeldCatapult();
+                    if (_i.DrawOperation.BowHolding)
+                    {
+                        bow.Item1.CancelAction(bow.Item2);
+                    }
+                    _i.DrawOperation.BowDrawing = false; // 武器が既に切替済み ( cat == null ) でもフラグは必ず落とす ( StopHolding が旧弓を CancelAction 済み )
+                }
+                _i.Self.Attack(true);
+                _i.DrawOperation.Pressed = false;
             }
             _i.ADSOperation.Run(false);
         }

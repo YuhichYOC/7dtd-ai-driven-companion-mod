@@ -1,6 +1,6 @@
 /*
 *
-* ApprovementValidator.cs
+* Melee.cs
 *
 * Copyright 2026 Yuichi Yoshii
 *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -21,21 +21,17 @@
 
 namespace CompanionAIVerify.Combat.Validate
 {
-    internal class ApprovementValidator
+    internal class TargetValidator
     {
         private InfoHolder _i;
         private LogInfoHolder _li;
 
-        internal ApprovementValidator(InfoHolder i, LogInfoHolder li)
+        internal TargetValidator(InfoHolder i, LogInfoHolder li)
         {
             _i = i;
             _li = li;
         }
 
-        internal bool EngageApproved() => Cfg.CombatMode;
-
-        internal bool FireApproved() => CorFlags.EnableRangedFire;
-
-        internal bool BowDrawApproved() => Cfg.BowChargeEnabled;
+        internal bool TargetIsValid() => _i.Target.Valid;
     }
 }
