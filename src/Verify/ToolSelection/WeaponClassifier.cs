@@ -19,10 +19,10 @@
  *
  */
 
-extern alias LogLib;
 using System;
 using System.Collections.Generic;
 using CompanionAIVerify.Config;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.ToolSelection;
 
@@ -58,11 +58,10 @@ internal static class WeaponClassifier
         var noIncludes = _meleeNames.Count == 0 && _rangedNames.Count == 0
                                                 && !_hasMeleeTags && !_hasRangedTags;
         if (strict && noIncludes)
-            LogLib::Log.Warning("[CompanionAI] weapon-classify: strict モードだが include 指定が空 = 全アイテム非武器扱い。");
+            Logger.LogWeaponClassifyStrictNoIncludes();
         else
-            LogLib::Log.Out(
-                $"[CompanionAI] weapon-classify: mode={Cfg.WeaponClassifyMode} meleeNames={_meleeNames.Count} rangedNames={_rangedNames.Count} " +
-                $"excludeNames={_excludeNames.Count} tags(m/r/x)={(_hasMeleeTags ? 1 : 0)}/{(_hasRangedTags ? 1 : 0)}/{(_hasExcludeTags ? 1 : 0)}");
+            Logger.LogWeaponClassify(_meleeNames.Count, _rangedNames.Count, _excludeNames.Count, _hasMeleeTags ? 1 : 0,
+                _hasRangedTags ? 1 : 0, _hasExcludeTags ? 1 : 0);
     }
 
     internal static WeaponMode Classify(ItemClass ic)

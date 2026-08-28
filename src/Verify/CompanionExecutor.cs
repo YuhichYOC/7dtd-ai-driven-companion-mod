@@ -28,6 +28,7 @@ using CompanionAIVerify.Stance;
 using CompanionAIVerify.ToolSelection;
 using CompanionAIVerify.Utility;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify;
 
@@ -36,19 +37,14 @@ internal static class CompanionExecutor
 {
     private static readonly ActionResolver ActionResolver = new();
     private static readonly PositionResolver PositionResolver = new();
-    private static readonly LogInfoHolder LogInfoHolder = new();
 
     internal static void OnMovePrefix(EntityPlayerLocal self)
     {
-        // ver 0.8.1 weapon-classify にスロットルを実装する
-        // ロガーにアクセスする方法を早めに考えなければならない
-        CombatDriver.InfoHolder.LogInfoHolder = LogInfoHolder;
-
         if (UnityInputLegacy::UnityEngine.Input.GetKeyDown(Cfg.ToggleKey))
         {
             ModCfgFile.Reload(); // 編集した companion_config.txt を即反映
             Cfg.Enabled = !Cfg.Enabled;
-            LogInfoHolder.Logger.LogModEnabled();
+            Logger.LogModEnabled();
             if (!Cfg.Enabled)
             {
                 CombatDriver.ReleaseFireIfPressed(self);
@@ -80,7 +76,7 @@ internal static class CompanionExecutor
 
         // --- 脅威検知（Section B） ---
         var threat = ThreatScanner.ScanNearestActiveThreat(world, self);
-        LogInfoHolder.Logger.LogThreat(threat);
+        Logger.LogThreat(threat);
 
         // v0.8.1 ロジック動的切り替え
         ActionResolver.Run(self, threat);
@@ -248,7 +244,7 @@ internal static class CompanionExecutor
         var headClear = !IsBlocking(world, headCell.x, headCell.y, headCell.z);
         var jump = legBlocked && headClear;
 
-        LogInfoHolder.Logger.LogJump(wp, flat, legCell, legBlocked, headCell, headClear, jump);
+        Logger.LogJump(wp, flat, legCell, legBlocked, headCell, headClear, jump);
 
         return jump;
     }

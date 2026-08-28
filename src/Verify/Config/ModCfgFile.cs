@@ -19,10 +19,10 @@
  *
  */
 
-extern alias LogLib;
 using System;
 using System.Globalization;
 using System.IO;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.Config;
 
@@ -40,7 +40,7 @@ internal static class ModCfgFile
             var dir = mod != null ? mod.Path : null; // 3.1.0 で異なる場合は要確認
             if (string.IsNullOrEmpty(dir))
             {
-                LogLib::Log.Warning("[CompanionAI] mod path unknown; config disabled, using defaults.");
+                Logger.LogModNotFound();
                 return;
             }
 
@@ -49,18 +49,18 @@ internal static class ModCfgFile
                 try
                 {
                     File.WriteAllText(_path, DefaultText());
-                    LogLib::Log.Out("[CompanionAI] wrote default config: " + _path);
+                    Logger.LogConfigTemplateWritten(_path);
                 }
                 catch (Exception e)
                 {
-                    LogLib::Log.Warning("[CompanionAI] could not write default config: " + e.Message);
+                    Logger.LogConfigTemplateCantWrite(e.Message);
                 }
 
             Load();
         }
         catch (Exception e)
         {
-            LogLib::Log.Warning("[CompanionAI] config init failed: " + e.Message + " (using defaults)");
+            Logger.LogConfigLoadError(e.Message);
         }
     }
 
@@ -73,7 +73,7 @@ internal static class ModCfgFile
         }
         catch (Exception e)
         {
-            LogLib::Log.Warning("[CompanionAI] config reload failed: " + e.Message);
+            Logger.LogConfigReloadError(e.Message);
         }
     }
 
@@ -81,7 +81,7 @@ internal static class ModCfgFile
     {
         if (_path == null || !File.Exists(_path))
         {
-            LogLib::Log.Out("[CompanionAI] config not found, using defaults.");
+            Logger.LogConfigFileNotFound();
             return;
         }
 
@@ -95,21 +95,10 @@ internal static class ModCfgFile
             var key = line.Substring(0, eq).Trim();
             var val = line.Substring(eq + 1).Trim();
             if (Apply(key, val)) applied++;
-            else LogLib::Log.Warning("[CompanionAI] config: unknown/invalid '" + key + "' = '" + val + "'");
+            else Logger.LogConfigUnknownEntry(key, val);
         }
 
-        LogLib::Log.Out(
-            $"[CompanionAI] config loaded ({applied} keys): " +
-            $"Combat={Cfg.CombatMode} Ranged={Cfg.EnableRangedFire} Snap={Cfg.SnapCameraOnFire} " +
-            $"AimFromCam={Cfg.AimFromCameraOrigin} ADS={Cfg.AimDownSightsOnEngage} ForceFPV={Cfg.ForceFirstPerson} | " +
-            $"Standoff={Cfg.StandoffMeters} Run={Cfg.RunMeters} ScanR={Cfg.ThreatScanRadius} " +
-            $"HeadLift={Cfg.HeadAimMinLift} MaxEngage={Cfg.RangedMaxEngageMeters} FireInt={Cfg.RangedFireIntervalSec} " +
-            $"RangeSafety={Cfg.RangedRangeSafety} FFGate={Cfg.FriendlyFireGate} FFMargin={Cfg.FriendlyFireMargin} " +
-            $"ReachBuf={Cfg.ReachBuffer} LogThr={Cfg.LogThrottleSec} " +
-            $"Bow={Cfg.BowChargeEnabled} BowFrac={Cfg.BowDrawFraction} " +
-            $"Jump={Cfg.JumpObstacles} JumpProbe={Cfg.JumpProbeAhead} " +
-            $"| Approach={Cfg.MeleeAutoApproach} ApproachMax={Cfg.MeleeApproachMaxDistance} StepIn={Cfg.MeleeApproachStepIn} " +
-            $"AimAssist={Cfg.MeleeAimAssist} PinLeader={Cfg.DebugPinTargetToLeader} Freeze={Cfg.DebugFreezeHostiles}");
+        Logger.LogConfigLoad(applied);
     }
 
     private static bool Apply(string key, string val)

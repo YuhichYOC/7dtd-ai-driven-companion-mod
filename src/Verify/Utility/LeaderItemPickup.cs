@@ -19,10 +19,10 @@
  *
  */
 
-extern alias LogLib;
 using System.Collections.Generic;
 using CompanionAIVerify.Config;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.Utility;
 
@@ -72,8 +72,7 @@ internal static class LeaderItemPickup
             {
                 e.Collect(self.entityId); // サーバへ NetPackageEntityCollect
                 collected++;
-                LogLib::Log.Out(
-                    $"[CompanionAI] pickup: collect id={e.entityId} owner={e.belongsPlayerId} d={Mathf.Sqrt(dSq):0.0}m ({(leaderOwned ? "leader" : "unowned")})");
+                Logger.LogPickup(e.entityId, e.belongsPlayerId, Mathf.Sqrt(dSq), leaderOwned ? "leader" : "unowned");
             }
         }
 
@@ -81,8 +80,7 @@ internal static class LeaderItemPickup
         if (seen > 0 && collected == 0 && Time.time >= _nextLog)
         {
             _nextLog = Time.time + 1.0f;
-            LogLib::Log.Out(
-                $"[CompanionAI] pickup: {seen} item(s) in range, none matched (firstOwner={firstOwner}, leaderId={leader.entityId}, selfId={self.entityId}).");
+            Logger.LogPickupDiagnostics(seen, firstOwner, leader.entityId, self.entityId);
         }
     }
 }

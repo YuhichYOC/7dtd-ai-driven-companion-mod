@@ -23,6 +23,7 @@ using System;
 using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.Combat.Operate;
 
@@ -73,14 +74,14 @@ internal class DrawOperation
         if (_bow.Item2.m_bActivated)
         {
             Drawing = true; // ゲーム側が活性化 = ドロー開始成功
-            _i.LogInfoHolder.Logger.LogStartDraw(_i, before, _bow.Item2.m_MaxStrainTime);
+            Logger.LogStartDraw(_i, before, _bow.Item2.m_MaxStrainTime);
         }
         else
         {
             // 活性化せず = 矢切れでリロード要求 ( Catapult : 113-120 ) or Delay
             // 少し待って再試行
             BowNextTry = Time.time + Cfg.LogThrottleSec;
-            _i.LogInfoHolder.Logger.LogBowReload(_i);
+            Logger.LogBowReload(_i);
         }
     }
 
@@ -112,6 +113,6 @@ internal class DrawOperation
                 : hitE.entityId == _i.Target.Target.entityId ? "TARGET" : "OTHER id=" + hitE.entityId;
         }
 
-        _i.LogInfoHolder.Logger.LogBowLoose(_i, strain, after, hit);
+        Logger.LogBowLoose(_i, strain, after, hit);
     }
 }

@@ -84,11 +84,11 @@
 // =============================================================================
 
 extern alias UnityInputLegacy;
-extern alias LogLib;
 using System.Linq;
 using GamePath;
 using HarmonyLib;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.AstarPath;
 
@@ -129,11 +129,11 @@ internal static class HostProbeCfg
 //   ホストでは local player(リーダー)に対し毎フレーム呼ばれる。companion PC でも走るが
 //   OnHostTick 内の !IsRemote ゲートで弾かれる。既存 OnMovePrefix とは別prefixとして共存。
 [HarmonyPatch(typeof(EntityPlayerLocal), "MoveByInput")]
-internal static class Patch_EntityPlayerLocal_MoveByInput_HostProbe
+internal static class PatchEntityPlayerLocalMoveByInputHostProbe
 {
-    private static void Prefix(EntityPlayerLocal __instance)
+    private static void Prefix(EntityPlayerLocal instance)
     {
-        HostPathProbe.OnHostTick(__instance);
+        HostPathProbe.OnHostTick(instance);
     }
 }
 
@@ -191,7 +191,7 @@ internal static class HostPathProbe
         if (!UnityInputLegacy::UnityEngine.Input.GetKeyDown(HostProbeCfg.ToggleKey)) return;
 
         HostProbeCfg.Enabled = !HostProbeCfg.Enabled;
-        LogLib::Log.Out($"[CompanionAI][host] path-probe = {HostProbeCfg.Enabled}");
+        Logger.LogHostPathProveToggle();
         if (!HostProbeCfg.Enabled) ResetState();
     }
 
@@ -209,7 +209,7 @@ internal static class HostPathProbe
             if (Time.time >= _nextSkipLogTime)
             {
                 _nextSkipLogTime = Time.time + 2.0f;
-                LogLib::Log.Out("[CompanionAI][host] no companion (remote player) found");
+                Logger.LogHostPathProveRemoteNotFound();
             }
 
             return false;
@@ -239,8 +239,7 @@ internal static class HostPathProbe
             if (Time.time >= _nextSkipLogTime)
             {
                 _nextSkipLogTime = Time.time + 2.0f;
-                LogLib::Log.Out(
-                    $"[CompanionAI][host] companion too far ({WorldInfo.Distance:0.0}m > {HostProbeCfg.MaxCompanionDist:0}m); skip request");
+                Logger.LogHostPathProveRemoteIsTooFar(WorldInfo.Distance);
             }
 
             return false;
@@ -256,8 +255,8 @@ internal static class HostPathProbe
         {
             // CreateNavigator(EntityAlive) : companion は EntityPlayer : EntityAlive
             WorldInfo.Companion.navigator = AstarManager.CreateNavigator(WorldInfo.Companion);
-            LogLib::Log.Out(
-                $"[CompanionAI][host] assigned navigator to companion '{WorldInfo.Companion.PlayerDisplayName}' ({WorldInfo.Companion.entityId})");
+            Logger.LogHostPathProveNavigatorCreated(WorldInfo.Companion.PlayerDisplayName,
+                WorldInfo.Companion.entityId);
             return false;
         }
 
@@ -372,11 +371,8 @@ internal static class HostPathProbe
         _nextLogTime = now + HostProbeCfg.LogThrottleSec;
 
         var sinceProgress = now - _lastProgressTime;
-        LogLib::Log.Out(
-            $"[CompanionAI][host] path {status} comp='{companion.PlayerDisplayName}'({companion.entityId}) " +
-            $"pts={n} straight={straight:0.0}m poly={poly:0.0}m endGap={endGap:0.0}m " +
-            $"bestGap={(_bestEndGap == float.MaxValue ? 0f : _bestEndGap):0.0}m sinceProg={sinceProgress:0.0}s " +
-            $"start=({start.x:0.0},{start.y:0.0},{start.z:0.0}) end=({end.x:0.0},{end.y:0.0},{end.z:0.0})");
+        Logger.LogHostPathProveWaypointsSend(status, companion.PlayerDisplayName, companion.entityId, n, straight, poly,
+            endGap, _bestEndGap == float.MaxValue ? 0f : _bestEndGap, sinceProgress, start, end);
     }
 
     private static void LogNoPath(EntityPlayer companion, EntityPlayer leader, float dist, string reason)
@@ -385,8 +381,7 @@ internal static class HostPathProbe
         _nextLogTime = Time.time + HostProbeCfg.LogThrottleSec;
         _lastLoggedN = int.MinValue;
         _lastStatus = "FAIL";
-        LogLib::Log.Out($"[CompanionAI][host] path FAIL comp={companion.entityId} d={dist:0.0}m : {reason} " +
-                        "(グリッド76m外 / 未接続 / 生成失敗のいずれか)");
+        Logger.LogHostPathProveNoPath(companion.entityId, dist, reason);
     }
 
     private static void ResetState()
@@ -415,12 +410,8 @@ internal static class HostPathProbe
         var isRemote = hw != null && hw.IsRemote();
         var hasPrimary = hw != null && hw.GetPrimaryPlayer() != null;
         var players = hw != null && hw.GetPlayers() != null ? hw.GetPlayers().Count : -1;
-        LogLib::Log.Out(
-            $"[CompanionAI][host] hook alive: self={(self != null ? self.entityId : -1)} " +
-            $"world={hw != null} isRemote={isRemote} primary={hasPrimary} players={players} " +
-            $"astar={AstarManager.Instance != null} pft={PathFinderThread.Instance != null} " +
-            $"enabled={HostProbeCfg.Enabled} focus={Application.isFocused}"
-        );
+        Logger.LogHostPathProveHeartbeat(self != null ? self.entityId : -1, hw != null, isRemote, hasPrimary, players,
+            PathFinderThread.Instance != null);
     }
 
     // 入力エッジ診断 : このフック文脈で GetKeyDown が生きているかを可視化する。
@@ -431,7 +422,7 @@ internal static class HostPathProbe
         if (!HostProbeCfg.DebugHeartbeat) return;
         if (!UnityInputLegacy::UnityEngine.Input.anyKeyDown) return;
 
-        LogLib::Log.Out("[CompanionAI][host] Input.anyKeyDown edge seen here");
+        Logger.LogHostPathProveEdge();
     }
 
     // World の参照があちこちにある

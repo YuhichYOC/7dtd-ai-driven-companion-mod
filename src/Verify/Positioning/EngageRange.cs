@@ -19,10 +19,10 @@
  *
  */
 
-extern alias LogLib;
 using System.Collections.Generic;
 using CompanionAIVerify.Config;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.Positioning;
 
@@ -159,13 +159,12 @@ internal static class EngageRange
 
         if (!info.valid)
         {
-            LogLib::Log.Out("[CompanionAI][EngageRange] eid={0} weapon=INVALID (no attack action / bare hand)", id);
+            Logger.LogRange(true, id, string.Empty, string.Empty, 0.0f, 0.0f, 0.0f, string.Empty, false);
             return;
         }
 
-        LogLib::Log.Out(
-            $"[CompanionAI][EngageRange] eid={id} {(info.isRanged ? "RANGED" : "MELEE")} action={info.actionType} range={info.range:F2} " +
-            $"block={info.blockRange:F2} sphere={info.sphereRadius:F2} d_eyeChest={(float.IsNaN(d) ? "n/a" : d.ToString("F2"))} inRange={inRange}");
+        Logger.LogRange(false, id, info.isRanged ? "RANGED" : "MELEE", info.actionType, info.range, info.blockRange,
+            info.sphereRadius, float.IsNaN(d) ? "n/a" : d.ToString("F2"), inRange);
     }
 
     internal struct Info

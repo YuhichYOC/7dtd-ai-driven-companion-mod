@@ -20,6 +20,7 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Log;
 
 namespace CompanionAIVerify.Combat.Operate;
 
@@ -40,7 +41,7 @@ internal class SwingOperation
         if (_i.Self.Attack(false)) // press。ケイデンスは canStartAttack の APM 律速が制御
         {
             Pressed = true;
-            _i.LogInfoHolder.Logger.LogMeleeSwing(_i);
+            Logger.LogMeleeSwing(_i);
         }
     }
 }

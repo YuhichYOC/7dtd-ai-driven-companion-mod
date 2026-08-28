@@ -22,12 +22,15 @@
 using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.Combat.Operate;
 
 internal class TriggerOperation
 {
     private readonly InfoHolder _i;
+
+    private int _mag;
 
     private float _nextFireTime;
 
@@ -42,9 +45,10 @@ internal class TriggerOperation
     // ★ ( 3 ) フルオート判定して駆動
     internal void Run()
     {
+        _mag = _i.GetHoldingMeta();
         if (Cfg.FullAutoHold && _i.FullAutoValidator.IsFullAuto())
         {
-            if (_i.GetHoldingMeta() == 0)
+            if (_mag == 0)
                 FullAutoReload();
             else
                 FullAutoFire();
@@ -72,6 +76,8 @@ internal class TriggerOperation
             _i.Self.Attack(false);
             Pressed = true;
         } // press ( empty -> requestReload )
+
+        Logger.LogFire(_i, true, _i.GetHoldingMeta(), _mag);
     }
 
     // フルオート マガジン弾あり 発砲
@@ -81,6 +87,7 @@ internal class TriggerOperation
     {
         _i.Self.Attack(false);
         Pressed = true;
+        Logger.LogFire(_i, true, _i.GetHoldingMeta(), _mag);
     }
 
     // セミ & バースト
@@ -99,5 +106,6 @@ internal class TriggerOperation
         _i.Self.Attack(false);
         Pressed = true;
         _nextFireTime = Time.time + Cfg.RangedFireIntervalSec;
+        Logger.LogFire(_i, false, _i.GetHoldingMeta(), before);
     }
 }

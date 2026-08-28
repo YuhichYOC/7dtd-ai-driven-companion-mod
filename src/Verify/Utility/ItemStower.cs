@@ -19,10 +19,10 @@
  *
  */
 
-extern alias LogLib;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.ToolSelection;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.Utility;
 
@@ -66,12 +66,12 @@ internal static class ItemStower
             {
                 bag.SetSlot(i, ItemStack.Empty);
                 moved++;
-                LogLib::Log.Out($"[CompanionAI] stow: bag[{i}] -> toolbelt[{slot}] {DescribeStack(st)}");
+                Logger.LogStowBag(i, slot, DescribeStack(st));
             }
         }
 
         if (moved > 0)
-            LogLib::Log.Out($"[CompanionAI] stow: moved {moved} weapon stack(s) to toolbelt.");
+            Logger.LogStowToolbelt(moved);
     }
 
     internal static bool IsWeaponStack(ItemStack st)

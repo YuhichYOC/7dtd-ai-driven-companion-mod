@@ -23,7 +23,6 @@ using System;
 using CompanionAIVerify.Combat.Operate;
 using CompanionAIVerify.Combat.Validate;
 using CompanionAIVerify.Config;
-using CompanionAIVerify.Log;
 using CompanionAIVerify.Perception;
 using CompanionAIVerify.Positioning;
 using UnityEngine;
@@ -80,8 +79,6 @@ internal class InfoHolder
     internal float Distance { get; private set; }
 
     internal float FireMax { get; set; }
-
-    internal LogInfoHolder LogInfoHolder { get; set; }
 
     internal AdsOperation AdsOperation { get; }
 

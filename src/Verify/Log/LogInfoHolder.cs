@@ -24,8 +24,9 @@ namespace CompanionAIVerify.Log;
 internal static class LogInfoHolder
 {
     // CombatDriver など、各クラスの持つ状態のうちログに関するものを LogInfo にまとめる
-    //
-    // Log クラスも同居させる
+
+    // 武器分類器ログ throttle
+    internal static float NextWeaponClassifyLogTime { get; set; }
 
     // 交戦ログ throttle
     internal static float NextEngageLogTime { get; set; }
@@ -45,7 +46,6 @@ internal static class LogInfoHolder
     // 発砲ドライバ「前回ログ時点でのマガジン残弾数」
     internal static int LastMeta { get; set; }
 
-    internal int LastLoggedThreatId { get; set; }
-
-    internal Logger Logger { get; }
+    // 脅威検知機能の検証に使う「一番最近検知した脅威の entityId」
+    internal static int LastLoggedThreatId { get; set; }
 }

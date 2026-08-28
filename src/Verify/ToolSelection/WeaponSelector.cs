@@ -19,10 +19,10 @@
  *
  */
 
-extern alias LogLib;
 using CompanionAIVerify.Combat;
 using CompanionAIVerify.Config;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.ToolSelection;
 
@@ -116,8 +116,12 @@ internal static class WeaponSelector
         CombatDriver.ReleaseFireIfPressed(self);
         inv.SetHoldingItemIdxNoHolsterTime(slot);
 
-        LogLib::Log.Out(
-            $"[CompanionAI] weapon-switch: -> {want} slot={slot} d={d:0.0}m (R={_rangedSlot} M={_meleeSlot})");
+        Logger.LogWeaponSwitch(want switch
+        {
+            WeaponMode.Melee => "MELEE",
+            WeaponMode.Ranged => "RANGED",
+            _ => "NONE"
+        }, slot, d, _rangedSlot, _meleeSlot);
         return true;
     }
 }

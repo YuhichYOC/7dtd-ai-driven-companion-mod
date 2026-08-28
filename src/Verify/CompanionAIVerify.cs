@@ -19,9 +19,9 @@
  *
  */
 
-extern alias LogLib;
 using CompanionAIVerify.Config;
 using HarmonyLib;
+using Logger = CompanionAIVerify.Log.Logger;
 
 // =============================================================================
 // Companion AI verify harness — Build v0.7.1
@@ -175,22 +175,21 @@ internal enum WeaponMode
 // --- Mod entry -----------------------------------------------------------
 public class CompanionAIVerifyModApi : IModApi
 {
-    public void InitMod(Mod _modInstance)
+    public void InitMod(Mod modInstance)
     {
         var harmony = new Harmony("companionai.verify");
         harmony.PatchAll();
-        ModCfgFile.Init(_modInstance); // companion_config.txt を読込（無ければ生成）
-        LogLib::Log.Out(
-            "[CompanionAI] verify harness v0.6.1 loaded (engage[melee+ranged/parallax/ADS/shootable-gate/full-auto] + file-config). F8 to toggle drive / reload config.");
+        ModCfgFile.Init(modInstance); // companion_config.txt を読込（無ければ生成）
+        Logger.LogModLoaded();
     }
 }
 
 // --- Harmony patch -------------------------------------------------------
 [HarmonyPatch(typeof(EntityPlayerLocal), "MoveByInput")]
-internal static class Patch_EntityPlayerLocal_MoveByInput
+internal static class PatchEntityPlayerLocalMoveByInput
 {
-    private static void Prefix(EntityPlayerLocal __instance)
+    private static void Prefix(EntityPlayerLocal instance)
     {
-        CompanionExecutor.OnMovePrefix(__instance);
+        CompanionExecutor.OnMovePrefix(instance);
     }
 }

@@ -51,12 +51,12 @@
 //   受信は OnChunkClient（クライアント側 PathRx prefix から呼ばれる）。
 // =============================================================================
 
-extern alias LogLib;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using CompanionAIVerify.Positioning;
 using UnityEngine;
+using Logger = CompanionAIVerify.Log.Logger;
 
 namespace CompanionAIVerify.AstarPath;
 
@@ -103,9 +103,8 @@ internal static class PathWire
         chunks.ForEach(chunk => WorldInfo.GameManager.ChatMessageServer(null, WireChatType, -1, chunk,
             recipients, WireMsgSender));
 
-        Vector3 s = wps[0], e = wps[wps.Length - 1];
-        LogLib::Log.Out($"[CompanionAI][host] sent path msgId={msgId} status={status} pts={wps.Length} " +
-                        $"chunks={chunks.Count} start=({s.x:0.0},{s.y:0.0},{s.z:0.0}) end=({e.x:0.0},{e.y:0.0},{e.z:0.0})");
+        Vector3 s = wps[0], e = wps[^1];
+        Logger.LogPathWireReception(msgId, status, wps.Length, chunks.Count, s, e);
     }
 
     private static List<string> Encode(Vector3[] wps, Vector3 anchor, string status, int msgId)
@@ -187,7 +186,7 @@ internal static class PathWire
                 if (c.Length < 3 || !int.TryParse(c[0], out var l_dx) || !int.TryParse(c[1], out var l_dy) ||
                     !int.TryParse(c[2], out var l_dz))
                 {
-                    LogLib::Log.Warning($"[CompanionAI][client] malformed point '{p}'");
+                    Logger.LogPathWireBrokenPoint(p);
                     return new { count = 0, dx = 0, dy = 0, dz = 0 };
                 }
 
@@ -200,9 +199,7 @@ internal static class PathWire
         var s = pts.Count > 0 ? pts[0] : Vector3.zero;
         var e = pts.Count > 0 ? pts[pts.Count - 1] : Vector3.zero;
         var verdict = pts.Count == b.n ? "OK" : "COUNT-MISMATCH";
-        LogLib::Log.Out($"[CompanionAI][client] recv path msgId={i.msgId} status={b.status} " +
-                        $"pts={pts.Count}(exp {b.n}) {verdict} chunks={b.total} " +
-                        $"start=({s.x:0.0},{s.y:0.0},{s.z:0.0}) end=({e.x:0.0},{e.y:0.0},{e.z:0.0})");
+        Logger.LogPathWireReception(i.msgId, b.status, pts.Count, b.n, verdict, b.total, s, e);
 
         // スライス3: 受信経路を追従ステートへ渡す（F8ドライバの follow が読む）。
         //   COUNT-MISMATCH は破損の可能性があるので追従へは渡さない（直線フォールバックのまま）。
@@ -226,7 +223,7 @@ internal static class PathWire
         if (drop != null)
             for (var i = 0; i < drop.Count; i++)
             {
-                LogLib::Log.Warning($"[CompanionAI][client] dropped incomplete msgId={drop[i]} (got<total, stale)");
+                Logger.LogPathWirePruneStale(drop[i]);
                 _rx.Remove(drop[i]);
             }
     }
@@ -255,14 +252,14 @@ internal static class PathWire
 
             if (f.Length < 8)
             {
-                LogLib::Log.Warning("[CompanionAI][client] malformed chunk (fields < 8)");
+                Logger.LogPathWireClientReceivedQuorumLack();
                 return null;
             }
 
             if (!int.TryParse(f[1], out var l_msgId) || !int.TryParse(f[2], out var l_seq) ||
                 !int.TryParse(f[3], out var l_total) || !int.TryParse(f[5], out var l_n))
             {
-                LogLib::Log.Warning("[CompanionAI][client] malformed chunk (header parse)");
+                Logger.LogPathWireClientReceivedBrokenHeader();
                 return null;
             }
 
@@ -270,7 +267,7 @@ internal static class PathWire
             if (a.Length < 3 || !int.TryParse(a[0], out var l_ax) || !int.TryParse(a[1], out var l_ay) ||
                 !int.TryParse(a[2], out var l_az))
             {
-                LogLib::Log.Warning("[CompanionAI][client] malformed chunk (anchor)");
+                Logger.LogPathWireClientReceivedBrokenWaypoint();
                 return null;
             }
 

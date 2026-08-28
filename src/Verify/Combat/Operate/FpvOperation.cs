@@ -21,6 +21,7 @@
 
 using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
+using CompanionAIVerify.Log;
 
 namespace CompanionAIVerify.Combat.Operate;
 
@@ -46,12 +47,12 @@ internal class FpvOperation
 
         _fpvLogged = true;
         _lastFpv = fpv;
-        _i.LogInfoHolder.Logger.LogFpv(_i, fpv);
+        Logger.LogFpv(_i, fpv);
 
         if (!fpv && Cfg.ForceFirstPerson)
         {
             _i.Self.SetFirstPersonView(true, false); // spawn 経路の誤設定を自己修復
-            _i.LogInfoHolder.Logger.LogFpv(_i);
+            Logger.LogFpv(_i);
         }
     }
 }

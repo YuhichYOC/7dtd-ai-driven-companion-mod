@@ -21,6 +21,7 @@
 
 using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
+using CompanionAIVerify.Log;
 using CompanionAIVerify.Positioning;
 
 namespace CompanionAIVerify.Combat.Action;
@@ -55,7 +56,7 @@ internal class DrawPattern01 : ICombatAction
         {
             _i.FpvOperation.Run();
             _i.ReleaseOperation.Run();
-            _i.LogInfoHolder.Logger.LogTargetOutOfRange(_i);
+            Logger.LogTargetOutOfRange(_i);
             return;
         }
 
@@ -63,7 +64,7 @@ internal class DrawPattern01 : ICombatAction
         if (!_i.ApprovementValidator.FireApproved())
         {
             _i.ReleaseOperation.Run();
-            _i.LogInfoHolder.Logger.LogRangedProhibited(_i);
+            Logger.LogRangedProhibited(_i);
             return;
         }
 
@@ -76,7 +77,7 @@ internal class DrawPattern01 : ICombatAction
         if (!_i.AimOperation.Shootable) // ★ 撃たない : 遮蔽 / FF / 空。理由をログしてホールド
         {
             _i.ReleaseOperation.Run();
-            _i.LogInfoHolder.Logger.LogShootableNotFound(_i);
+            Logger.LogShootableNotFound(_i);
             return;
         }
 
@@ -84,7 +85,7 @@ internal class DrawPattern01 : ICombatAction
         if (Cfg.FriendlyFireGate && _i.ShootableValidator.FriendlyInLineOfFire())
         {
             _i.ReleaseOperation.Run();
-            _i.LogInfoHolder.Logger.LogFriendlyInLineOfFire(_i);
+            Logger.LogFriendlyInLineOfFire(_i);
             return;
         }
 
