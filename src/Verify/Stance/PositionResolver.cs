@@ -1,6 +1,6 @@
 /*
  *
- * TargetValidator.cs
+ * PositionResolver.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -19,21 +19,31 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Perception;
 
-namespace CompanionAIVerify.Combat.Validate;
+namespace CompanionAIVerify.Stance;
 
-internal class TargetValidator
+/*
+ * MOD 操作キャラクターの位置調整を解決する
+ */
+internal class PositionResolver
 {
-    private readonly InfoHolder _i;
-
-    internal TargetValidator(InfoHolder i)
+    internal PositionResolver()
     {
-        _i = i;
+        Action = Actions.None;
     }
 
-    internal bool TargetIsValid()
+    internal Actions Action { get; private set; }
+
+    internal void Run(EntityPlayerLocal self, in ThreatInfo threat)
     {
-        return _i.Target.Valid;
+        // 仮実装 ... 常に ver 0.8.1 のリーダー追従を行う
+        Action = Actions.Follow01;
+    }
+
+    internal enum Actions
+    {
+        None,
+        Follow01
     }
 }

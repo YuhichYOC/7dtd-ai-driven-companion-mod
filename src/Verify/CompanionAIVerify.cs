@@ -1,27 +1,27 @@
 /*
-*
-* CompanionAIVerify.cs
-*
-* Copyright 2026 Yuichi Yoshii
-*     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*
-*/
+ *
+ * CompanionAIVerify.cs
+ *
+ * Copyright 2026 Yuichi Yoshii
+ *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 
-using HarmonyLib;
-
+extern alias LogLib;
 using CompanionAIVerify.Config;
+using HarmonyLib;
 
 // =============================================================================
 // Companion AI verify harness — Build v0.7.1
@@ -145,32 +145,52 @@ using CompanionAIVerify.Config;
 // 参照DLL: Assembly-CSharp.dll / UnityEngine.CoreModule.dll / 0Harmony.dll
 // =============================================================================
 
-namespace CompanionAIVerify
+namespace CompanionAIVerify;
+
+internal enum ThreatKind
 {
-    internal enum ThreatKind { Zombie, EnemyAnimal, HostileHuman, OtherEnemy, PassiveAnimal, Player, Unknown }
-    internal enum Awareness  { Unawakened, Awakening, Engaged }
+    Zombie,
+    EnemyAnimal,
+    HostileHuman,
+    OtherEnemy,
+    PassiveAnimal,
+    Player,
+    Unknown
+}
 
-    internal enum WeaponMode { None, Melee, Ranged }
+internal enum Awareness
+{
+    Unawakened,
+    Awakening,
+    Engaged
+}
 
-    // --- Mod entry -----------------------------------------------------------
-    public class CompanionAIVerifyModApi : IModApi
+internal enum WeaponMode
+{
+    None,
+    Melee,
+    Ranged
+}
+
+// --- Mod entry -----------------------------------------------------------
+public class CompanionAIVerifyModApi : IModApi
+{
+    public void InitMod(Mod _modInstance)
     {
-        public void InitMod(Mod _modInstance)
-        {
-            var harmony = new Harmony("companionai.verify");
-            harmony.PatchAll();
-            ModCfgFile.Init(_modInstance);   // companion_config.txt を読込（無ければ生成）
-            Log.Out("[CompanionAI] verify harness v0.6.1 loaded (engage[melee+ranged/parallax/ADS/shootable-gate/full-auto] + file-config). F8 to toggle drive / reload config.");
-        }
+        var harmony = new Harmony("companionai.verify");
+        harmony.PatchAll();
+        ModCfgFile.Init(_modInstance); // companion_config.txt を読込（無ければ生成）
+        LogLib::Log.Out(
+            "[CompanionAI] verify harness v0.6.1 loaded (engage[melee+ranged/parallax/ADS/shootable-gate/full-auto] + file-config). F8 to toggle drive / reload config.");
     }
+}
 
-    // --- Harmony patch -------------------------------------------------------
-    [HarmonyPatch(typeof(EntityPlayerLocal), "MoveByInput")]
-    internal static class Patch_EntityPlayerLocal_MoveByInput
+// --- Harmony patch -------------------------------------------------------
+[HarmonyPatch(typeof(EntityPlayerLocal), "MoveByInput")]
+internal static class Patch_EntityPlayerLocal_MoveByInput
+{
+    private static void Prefix(EntityPlayerLocal __instance)
     {
-        private static void Prefix(EntityPlayerLocal __instance)
-        {
-            CompanionExecutor.OnMovePrefix(__instance);
-        }
+        CompanionExecutor.OnMovePrefix(__instance);
     }
 }

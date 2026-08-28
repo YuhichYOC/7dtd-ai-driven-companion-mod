@@ -1,21 +1,21 @@
 /*
-*
-* PathRx.cs
-*
-* Copyright 2026 Yuichi Yoshii
-*     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*
-*/
+ *
+ * PathRx.cs
+ *
+ * Copyright 2026 Yuichi Yoshii
+ *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ */
 
 // =============================================================================
 // navigation スライス2 : クライアント側チャット横取り（表示抑止＋再結合へ供給）
@@ -36,21 +36,20 @@
 
 using HarmonyLib;
 
-namespace CompanionAIVerify.AstarPath
+namespace CompanionAIVerify.AstarPath;
+
+[HarmonyPatch(typeof(GameManager), "ChatMessageClient")]
+internal static class Patch_GameManager_ChatMessageClient_PathRx
 {
-    [HarmonyPatch(typeof(GameManager), "ChatMessageClient")]
-    internal static class Patch_GameManager_ChatMessageClient_PathRx
+    private static bool Prefix(string _msg)
     {
-        private static bool Prefix(string _msg)
-        {
-            if (string.IsNullOrEmpty(_msg) || !_msg.StartsWith(PathWire.Tag))
-                return true;    // 通常チャット → 通す
+        if (string.IsNullOrEmpty(_msg) || !_msg.StartsWith(PathWire.Tag))
+            return true; // 通常チャット → 通す
 
-            World world = (GameManager.Instance != null) ? GameManager.Instance.World : null;
-            if (world != null && world.IsRemote())
-                PathWire.OnChunkClient(_msg);   // クライアントでのみ再結合
+        var world = GameManager.Instance != null ? GameManager.Instance.World : null;
+        if (world != null && world.IsRemote())
+            PathWire.OnChunkClient(_msg); // クライアントでのみ再結合
 
-            return false;       // 自タグは表示抑止
-        }
+        return false; // 自タグは表示抑止
     }
 }

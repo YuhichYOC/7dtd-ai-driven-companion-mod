@@ -1,6 +1,6 @@
 /*
  *
- * TargetValidator.cs
+ * ADSActionValidator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -23,17 +23,24 @@ using CompanionAIVerify.Combat.Scene;
 
 namespace CompanionAIVerify.Combat.Validate;
 
-internal class TargetValidator
+internal class AdsActionValidator
 {
     private readonly InfoHolder _i;
 
-    internal TargetValidator(InfoHolder i)
+    internal AdsActionValidator(InfoHolder i)
     {
         _i = i;
     }
 
-    internal bool TargetIsValid()
+    // ADS 可否
+    // secondary action ( Actions[1] ) と actionData[1] が存在すること
+    // AimingGun setter が actionData[1] を直接参照 = 境界外で例外になるためのガード
+    internal bool CanUseAds()
     {
-        return _i.Target.Valid;
+        var inv = _i.Self.inventory;
+        var hi = inv != null ? inv.holdingItem : null;
+        var hid = inv != null ? inv.holdingItemData : null;
+        return hi != null && hi.Actions != null && hi.Actions.Length >= 2 && hi.Actions[1] != null
+               && hid != null && hid.actionData != null && hid.actionData.Count >= 2;
     }
 }

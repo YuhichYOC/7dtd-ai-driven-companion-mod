@@ -1,6 +1,6 @@
 /*
  *
- * FaceOperation.cs
+ * AdsOperation.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -20,32 +20,32 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
-using UnityEngine;
+using CompanionAIVerify.Config;
 
 namespace CompanionAIVerify.Combat.Operate;
 
-internal class FaceOperation
+internal class AdsOperation
 {
     private readonly InfoHolder _i;
 
-    internal FaceOperation(InfoHolder i)
+    internal AdsOperation(InfoHolder i)
     {
         _i = i;
     }
 
-    // ピッチ込みで対象中心付近を狙う
-    // 低い脅威にも当てるため y を潰さない
-    // 変換式は facing と同一 ( EPL : 2310, 248-252
-    // camera 経由で攻撃レイが操舵される
-    internal void Run()
-    {
-        var eye = _i.Self.position + Vector3.up * 1.5f; // 概算カメラ高
-        var aim = _i.Target.Target.position + Vector3.up * 0.9f; // 概算胴中心
-        var dir = aim - eye;
-        if (dir.sqrMagnitude < 1e-6f) return;
+    // ADS ( サイト覗き ) 状態
+    // 変化時のみトグル
+    internal bool AdsOn { get; private set; }
 
-        var euler = Quaternion.LookRotation(dir.normalized, Vector3.up).eulerAngles;
-        euler.x *= -1f; // ピッチ反転（EPL:239, 251）
-        _i.Self.SetRotation(euler);
+    // ADS ( サイト覗き ) 状態を変化時のみ切替
+    // AimingGun setter は FOV / animator / Actions[1] に副作用があるため冪等呼び出しを避ける
+    // secondary action を持たない銃では発動しない
+    internal void Run(bool on)
+    {
+        if (on && !Cfg.AimDownSightsOnEngage) on = false;
+        if (on && !_i.AdsActionValidator.CanUseAds()) on = false;
+        if (on == AdsOn) return;
+        AdsOn = on;
+        _i.Self.AimingGun = on; // 拡散 hip ( 1.0 ) <-> aiming ( 0.1 ) を切替 ( ItemActionRanged : 748, 1346 )
     }
 }

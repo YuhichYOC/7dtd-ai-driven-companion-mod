@@ -1,21 +1,21 @@
 /*
-*
-* PathFollowState.cs
-*
-* Copyright 2026 Yuichi Yoshii
-*     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*
-*/
+ *
+ * PathFollowState.cs
+ *
+ * Copyright 2026 Yuichi Yoshii
+ *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ */
 
 // =============================================================================
 // navigation スライス3 : クライアント側 経路追従ステート（受信経路 → 移動目標）
@@ -35,72 +35,78 @@
 
 using UnityEngine;
 
-namespace CompanionAIVerify.Positioning
+namespace CompanionAIVerify.Positioning;
+
+internal static class PathFollowState
 {
-    internal static class PathFollowState
+    private static Vector3[] _wps;
+    private static float _recvTime = -999f;
+    private static int _idx;
+    private static bool _reseed;
+
+    internal static string LastStatus { get; private set; } = "";
+
+    internal static bool HasFresh(float staleSec)
     {
-        private static Vector3[] _wps;
-        private static string    _status   = "";
-        private static float     _recvTime = -999f;
-        private static int        _idx;
-        private static bool       _reseed;
+        return _wps != null && _wps.Length > 0 && Time.time - _recvTime <= staleSec;
+    }
 
-        internal static string LastStatus => _status;
+    // PathWire.OnChunkClient から呼ばれる（クライアント側）
+    internal static void SetPath(Vector3[] wps, string status)
+    {
+        _wps = wps;
+        LastStatus = status ?? "";
+        _recvTime = Time.time;
+        _reseed = true;
+    }
 
-        internal static bool HasFresh(float staleSec)
-            => _wps != null && _wps.Length > 0 && (Time.time - _recvTime) <= staleSec;
+    // 追従の移動目標を返す。経路が無い/古い/消化済みなら false（呼び側は直線フォールバック）。
+    internal static bool TryGetMoveTarget(Vector3 selfPos, float arriveRadius, float heightTol,
+        float staleSec, out Vector3 target, out string status)
+    {
+        target = Vector3.zero;
+        status = LastStatus;
 
-        // PathWire.OnChunkClient から呼ばれる（クライアント側）
-        internal static void SetPath(Vector3[] wps, string status)
+        if (_wps == null || _wps.Length == 0 || Time.time - _recvTime > staleSec)
+            return false;
+
+        if (_reseed)
         {
-            _wps      = wps;
-            _status   = status ?? "";
-            _recvTime = Time.time;
-            _reseed   = true;
+            _reseed = false;
+            _idx = NearestIndex(selfPos); // 新経路: 最近傍から辿り後戻りを最小化
         }
 
-        // 追従の移動目標を返す。経路が無い/古い/消化済みなら false（呼び側は直線フォールバック）。
-        internal static bool TryGetMoveTarget(Vector3 selfPos, float arriveRadius, float heightTol,
-                                              float staleSec, out Vector3 target, out string status)
+        // 到達済みウェイポイントを飛ばす（水平半径＋高さ許容）
+        while (_idx < _wps.Length)
         {
-            target = Vector3.zero;
-            status = _status;
-
-            if (_wps == null || _wps.Length == 0 || (Time.time - _recvTime) > staleSec)
-                return false;
-
-            if (_reseed)
-            {
-                _reseed = false;
-                _idx = NearestIndex(selfPos);   // 新経路: 最近傍から辿り後戻りを最小化
-            }
-
-            // 到達済みウェイポイントを飛ばす（水平半径＋高さ許容）
-            while (_idx < _wps.Length)
-            {
-                Vector3 d = _wps[_idx] - selfPos;
-                float h = Mathf.Abs(d.y);
-                d.y = 0f;
-                if (d.magnitude <= arriveRadius && h <= heightTol) _idx++;
-                else break;
-            }
-
-            if (_idx >= _wps.Length) return false;   // 経路消化 → 最終接近は既存の直線に委ねる
-            target = _wps[_idx];
-            return true;
+            var d = _wps[_idx] - selfPos;
+            var h = Mathf.Abs(d.y);
+            d.y = 0f;
+            if (d.magnitude <= arriveRadius && h <= heightTol) _idx++;
+            else break;
         }
 
-        private static int NearestIndex(Vector3 p)
+        if (_idx >= _wps.Length) return false; // 経路消化 → 最終接近は既存の直線に委ねる
+        target = _wps[_idx];
+        return true;
+    }
+
+    private static int NearestIndex(Vector3 p)
+    {
+        var best = 0;
+        var bestSq = float.MaxValue;
+        for (var i = 0; i < _wps.Length; i++)
         {
-            int best = 0;
-            float bestSq = float.MaxValue;
-            for (int i = 0; i < _wps.Length; i++)
+            var d = _wps[i] - p;
+            d.y = 0f;
+            var sq = d.sqrMagnitude;
+            if (sq < bestSq)
             {
-                Vector3 d = _wps[i] - p; d.y = 0f;
-                float sq = d.sqrMagnitude;
-                if (sq < bestSq) { bestSq = sq; best = i; }
+                bestSq = sq;
+                best = i;
             }
-            return best;
         }
+
+        return best;
     }
 }

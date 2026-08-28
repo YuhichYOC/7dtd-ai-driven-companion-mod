@@ -1,6 +1,6 @@
 /*
  *
- * TargetValidator.cs
+ * FpvOperation.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -20,20 +20,38 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Config;
 
-namespace CompanionAIVerify.Combat.Validate;
+namespace CompanionAIVerify.Combat.Operate;
 
-internal class TargetValidator
+internal class FpvOperation
 {
     private readonly InfoHolder _i;
+    private bool _fpvLogged;
 
-    internal TargetValidator(InfoHolder i)
+    private bool _lastFpv;
+
+    internal FpvOperation(InfoHolder i)
     {
         _i = i;
+        _fpvLogged = false;
     }
 
-    internal bool TargetIsValid()
+    // 交戦の手前で bFirstPersonView を実ログ
+    // 初回 or 変化時のみ出力
+    internal void Run()
     {
-        return _i.Target.Valid;
+        var fpv = _i.Self.bFirstPersonView;
+        if (_fpvLogged && fpv == _lastFpv) return;
+
+        _fpvLogged = true;
+        _lastFpv = fpv;
+        _i.LogInfoHolder.Logger.LogFpv(_i, fpv);
+
+        if (!fpv && Cfg.ForceFirstPerson)
+        {
+            _i.Self.SetFirstPersonView(true, false); // spawn 経路の誤設定を自己修復
+            _i.LogInfoHolder.Logger.LogFpv(_i);
+        }
     }
 }
