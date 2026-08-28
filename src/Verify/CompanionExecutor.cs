@@ -19,7 +19,6 @@
  *
  */
 
-extern alias LogLib;
 extern alias UnityInputLegacy;
 using CompanionAIVerify.Combat;
 using CompanionAIVerify.Config;
@@ -35,19 +34,21 @@ namespace CompanionAIVerify;
 // --- Executor ------------------------------------------------------------
 internal static class CompanionExecutor
 {
-    private static int _lastLoggedThreatId = int.MinValue;
-    private static float _nextLogTime;
-    private static float _nextJumpLogTime; // ★ [jump] 段差ジャンプ発火ログの throttle
     private static readonly ActionResolver ActionResolver = new();
     private static readonly PositionResolver PositionResolver = new();
+    private static readonly LogInfoHolder LogInfoHolder = new();
 
     internal static void OnMovePrefix(EntityPlayerLocal self)
     {
+        // ver 0.8.1 weapon-classify にスロットルを実装する
+        // ロガーにアクセスする方法を早めに考えなければならない
+        CombatDriver.InfoHolder.LogInfoHolder = LogInfoHolder;
+
         if (UnityInputLegacy::UnityEngine.Input.GetKeyDown(Cfg.ToggleKey))
         {
             ModCfgFile.Reload(); // 編集した companion_config.txt を即反映
             Cfg.Enabled = !Cfg.Enabled;
-            LogLib::Log.Out("[CompanionAI] drive = " + Cfg.Enabled);
+            LogInfoHolder.Logger.LogModEnabled();
             if (!Cfg.Enabled)
             {
                 CombatDriver.ReleaseFireIfPressed(self);
@@ -79,7 +80,7 @@ internal static class CompanionExecutor
 
         // --- 脅威検知（Section B） ---
         var threat = ThreatScanner.ScanNearestActiveThreat(world, self);
-        LogThreat(threat);
+        LogInfoHolder.Logger.LogThreat(threat);
 
         // v0.8.1 ロジック動的切り替え
         ActionResolver.Run(self, threat);
@@ -247,15 +248,7 @@ internal static class CompanionExecutor
         var headClear = !IsBlocking(world, headCell.x, headCell.y, headCell.z);
         var jump = legBlocked && headClear;
 
-        if (Time.time >= _nextJumpLogTime)
-        {
-            _nextJumpLogTime = Time.time + Cfg.LogThrottleSec;
-            LogLib::Log.Out(
-                $"[CompanionAI] pre-jump: pos=({wp.x:0.00},{wp.y:0.00},{wp.z:0.00}) originY={Origin.position.y:0.00} " +
-                $"fwd=({flat.x:0.0},{flat.z:0.0}) probe={Cfg.JumpProbeAhead:0.0} " +
-                $"leg=({legCell.x},{legCell.y},{legCell.z})blk={legBlocked} " +
-                $"head=({headCell.x},{headCell.y},{headCell.z})clr={headClear} -> jump={jump}");
-        }
+        LogInfoHolder.Logger.LogJump(wp, flat, legCell, legBlocked, headCell, headClear, jump);
 
         return jump;
     }
@@ -313,27 +306,5 @@ internal static class CompanionExecutor
         }
 
         return best;
-    }
-
-    private static void LogThreat(ThreatInfo t)
-    {
-        var id = t.Valid ? t.Target.entityId : int.MinValue;
-        var changed = id != _lastLoggedThreatId;
-        if (!changed && Time.time < _nextLogTime) return;
-
-        _lastLoggedThreatId = id;
-        _nextLogTime = Time.time + Cfg.LogThrottleSec;
-
-        if (t.Valid)
-        {
-            var d = Mathf.Sqrt(t.DistSq);
-            LogLib::Log.Out(
-                $"[CompanionAI] threat: {t.Kind} {t.State} d={d:0.0}m (hostiles={ThreatScanner.LastHostileCount}, sleeping={ThreatScanner.LastSleepingCount})");
-        }
-        else
-        {
-            LogLib::Log.Out(
-                $"[CompanionAI] threat: none (hostiles={ThreatScanner.LastHostileCount}, sleeping={ThreatScanner.LastSleepingCount})");
-        }
     }
 }

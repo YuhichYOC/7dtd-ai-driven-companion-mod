@@ -21,12 +21,14 @@
 
 extern alias LogLib;
 using System.Linq;
+using System.Numerics;
+using System.Reflection.PortableExecutable;
 using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Positioning;
 using UnityEngine;
 
-namespace CompanionAIVerify.Combat.Log;
+namespace CompanionAIVerify.Log;
 
 internal class Logger
 {
@@ -35,6 +37,44 @@ internal class Logger
     internal Logger(LogInfoHolder i)
     {
         _i = i;
+    }
+
+    internal void LogModEnabled()
+    {
+        PrintLog($"[CompanionAI] drive = {Cfg.Enabled}");
+    }
+
+    internal void LogJump(Vector3 wp, Vector3 flat, Vector3 legCell, bool legBlocked, Vector3 headCell, bool headClear, bool jump)
+    {
+        if (Time.time >= _i.NextJumpLogTime)
+        {
+            _i.NextJumpLogTime = Time.time + Cfg.LogThrottleSec;
+            PrintLog(
+                $"[CompanionAI] pre-jump: pos=({wp.x:0.00},{wp.y:0.00},{wp.z:0.00}) originY={Origin.position.y:0.00} " +
+                $"fwd=({flat.x:0.0},{flat.z:0.0}) probe={Cfg.JumpProbeAhead:0.0} " +
+                $"leg=({legCell.x},{legCell.y},{legCell.z})blk={legBlocked} " +
+                $"head=({headCell.x},{headCell.y},{headCell.z})clr={headClear} -> jump={jump}"
+            );
+        }
+    }
+
+    internal void LogThreat(ThreatInfo t)
+    {
+        var id = t.Valid ? t.Target.entityId : int.MinValue;
+        var changed = id != _i.LastLoggedThreatId;
+        if (changed || Time.time >= _i.NextThreatLogTime)
+        {
+            _i.LastLoggedThreatId = id;
+            _i.NextThreatLogTime = Time.time + Cfg.LogThrottleSec;
+            if (t.Valid)
+            {
+                PrintLog($"[CompanionAI] threat: {t.Kind} {t.State} d={Mathf.Sqrt(t.DistSq):0.0}m (hostiles={ThreatScanner.LastHostileCount}, sleeping={ThreatScanner.LastSleepingCount})");
+            }
+            else
+            {
+                PrintLog($"[CompanionAI] threat: none (hostiles={ThreatScanner.LastHostileCount}, sleeping={ThreatScanner.LastSleepingCount})");
+            }
+        }
     }
 
     internal void LogMeleeSwing(InfoHolder i)

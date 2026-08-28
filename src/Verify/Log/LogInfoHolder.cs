@@ -19,29 +19,33 @@
  *
  */
 
-namespace CompanionAIVerify.Combat.Log;
+namespace CompanionAIVerify.Log;
 
-internal class LogInfoHolder
+internal static class LogInfoHolder
 {
-    // CombatDriver の持つ状態のうちログに関するものを LogInfo にまとめる
+    // CombatDriver など、各クラスの持つ状態のうちログに関するものを LogInfo にまとめる
     //
     // Log クラスも同居させる
 
-    internal LogInfoHolder()
-    {
-        LastMeta = int.MinValue;
-        Logger = new Logger(this);
-    }
-
-    internal float NextEngageLogTime { get; set; }
+    // 交戦ログ throttle
+    internal static float NextEngageLogTime { get; set; }
 
     // ホールド理由ログの throttle
-    internal float NextHoldLogTime { get; set; }
+    internal static float NextHoldLogTime { get; set; }
 
     // 弓ログ throttle
-    internal float NextBowLogTime { get; set; }
+    internal static float NextBowLogTime { get; set; }
 
-    internal int LastMeta { get; set; }
+    // ジャンプログ throttle
+    internal static float NextJumpLogTime { get; set; }
+
+    // 脅威ログ throttle
+    internal static float NextThreatLogTime { get; set; }
+
+    // 発砲ドライバ「前回ログ時点でのマガジン残弾数」
+    internal static int LastMeta { get; set; }
+
+    internal int LastLoggedThreatId { get; set; }
 
     internal Logger Logger { get; }
 }

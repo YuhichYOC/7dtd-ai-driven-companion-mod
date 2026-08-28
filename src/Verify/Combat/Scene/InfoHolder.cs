@@ -20,10 +20,10 @@
  */
 
 using System;
-using CompanionAIVerify.Combat.Log;
 using CompanionAIVerify.Combat.Operate;
 using CompanionAIVerify.Combat.Validate;
 using CompanionAIVerify.Config;
+using CompanionAIVerify.Log;
 using CompanionAIVerify.Perception;
 using CompanionAIVerify.Positioning;
 using UnityEngine;
@@ -43,7 +43,6 @@ internal class InfoHolder
 
     internal InfoHolder()
     {
-        LogInfoHolder = new LogInfoHolder();
         AdsOperation = new AdsOperation(this);
         AimOperation = new AimOperation(this);
         DrawOperation = new DrawOperation(this);
@@ -82,7 +81,7 @@ internal class InfoHolder
 
     internal float FireMax { get; set; }
 
-    internal LogInfoHolder LogInfoHolder { get; }
+    internal LogInfoHolder LogInfoHolder { get; set; }
 
     internal AdsOperation AdsOperation { get; }
 
