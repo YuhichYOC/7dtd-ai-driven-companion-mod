@@ -397,6 +397,11 @@ internal static class Logger
         );
     }
 
+    internal static void LogDebug(string message)
+    {
+        LogLib::Log.Out(message);
+    }
+
     private static void PrintLog(string message)
     {
         LogLib::Log.Out(message);

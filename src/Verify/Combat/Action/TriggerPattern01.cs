@@ -45,6 +45,9 @@ internal class TriggerPattern01 : ICombatAction
             return;
         }
 
+        _i.Ranged = true;
+        _i.FireMax = Cfg.RangedMaxEngageMeters;
+
         EngageRange.LogTick(_i.Self, _i.Target.Target);
 
         _i.SwitchOperation.Run();
@@ -52,7 +55,7 @@ internal class TriggerPattern01 : ICombatAction
 
         // ★ ( 1 ) 交戦の手前で bFirstPersonView を実ログ確定
         // ★ v0.8(C) 射程ゲート
-        if (_i.ReachValidator.TargetInReach())
+        if (!_i.ReachValidator.TargetInReach())
         {
             _i.FpvOperation.Run();
             _i.ReleaseOperation.Run();

@@ -20,6 +20,7 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Config;
 using CompanionAIVerify.Positioning;
 
 namespace CompanionAIVerify.Combat.Action;
@@ -42,6 +43,9 @@ internal class MeleePattern01 : ICombatAction
             _i.ReleaseOperation.Run();
             return;
         }
+
+        _i.Ranged = false;
+        _i.FireMax = Cfg.RangedMaxEngageMeters;
 
         EngageRange.LogTick(_i.Self, _i.Target.Target);
 

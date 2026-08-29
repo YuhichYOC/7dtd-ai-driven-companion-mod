@@ -188,8 +188,8 @@ public class CompanionAIVerifyModApi : IModApi
 [HarmonyPatch(typeof(EntityPlayerLocal), "MoveByInput")]
 internal static class PatchEntityPlayerLocalMoveByInput
 {
-    private static void Prefix(EntityPlayerLocal instance)
+    private static void Prefix(EntityPlayerLocal __instance) // この引数の名前は「__instance」にしなければならない。アンダースコアを削除しないように
     {
-        CompanionExecutor.OnMovePrefix(instance);
+        CompanionExecutor.OnMovePrefix(__instance);
     }
 }

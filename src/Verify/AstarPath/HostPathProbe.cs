@@ -131,9 +131,9 @@ internal static class HostProbeCfg
 [HarmonyPatch(typeof(EntityPlayerLocal), "MoveByInput")]
 internal static class PatchEntityPlayerLocalMoveByInputHostProbe
 {
-    private static void Prefix(EntityPlayerLocal instance)
+    private static void Prefix(EntityPlayerLocal __instance) // この引数の名前は「__instance」にしなければならない。アンダースコアを削除しないように
     {
-        HostPathProbe.OnHostTick(instance);
+        HostPathProbe.OnHostTick(__instance);
     }
 }
 
