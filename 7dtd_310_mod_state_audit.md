@@ -209,6 +209,7 @@ switch (e)
 | E5 | facing→攻撃レイの操舵 | `EntityPlayerLocal.SetRotation(Vector3)` → `m_vp_FPCamera.Angle` 更新 | `void` | — | ☑ | facingスライスの SetRotation がそのままカメラ＝攻撃レイを動かす。別経路不要 (EPL:2310-2321) |
 | E6 | 近接/遠距離の判別 | `holdingItem.Actions[0] is ItemActionRanged`（遠距離）／それ以外＝近接 | `bool` | field | ☑ | 継承: `ItemActionRanged:ItemActionAttack` / `ItemActionDynamicMelee:ItemActionDynamic` / `ItemActionMelee:ItemActionAttack`（各宣言） |
 | E7 | 近接射程 | `holdingItem.Actions[0].Range` | `float` | field | ☑ | 素手/取得不可時は 2.0m フォールバック。`Range` は `ItemAction` の public field (ItemAction:46) |
+| E8 | 発砲時の攻撃レイ原点補正（ピッチ変位） | `EntityPlayerLocal.GetLookRay()` の origin を `position+up*GetEyeHeight()` に差し替え（`ItemActionRanged.TryExecuteAction` 実行窓内のみ／方向は保持） | `Ray` | — | ☑ | E4のcamera由来originは vp_FPCamera が\|pitch\|に応じレンズを目から離す（実測≈1.5m, 俯角=下後方/仰角=下前方, originYtoFeet 1.60→~0.4）。`FaceOperation`(eye+1.5前提)と乖離し急角度で全弾外し（実測 俯角76/76・急仰角ほぼ全外し）。Harmony postfix で発砲窓のみ原点を目へ（`Patch_FireOriginFix.cs`, `Cfg.Enabled`ゲート）。fireShot(ItemActionRanged:1426)/GetActionEffectsValues(ItemActionLauncher:209)の両GetLookRayを一括補正。base式と同一(EntityAlive:5538, GetEyeHeight:4394)。**実機: 俯角0→56% / 急仰角0→40%**。診断ray-probeはAttack外のため数値不変＝hit率で判定 |
 
 ### E-a. bFirstPersonView は実行時決定（デフォルト true は保証されない）— ★ 交戦の前提
 

@@ -85,6 +85,7 @@ internal class TriggerOperation
     // 離しは disengage 時のみ
     private void FullAutoFire()
     {
+        Logger.LogRayProbe(_i); // [診断] 追加 : 発射直前に攻撃レイを実測
         _i.Self.Attack(false);
         Pressed = true;
         Logger.LogFire(_i, true, _i.GetHoldingMeta(), _mag);
@@ -103,6 +104,7 @@ internal class TriggerOperation
 
         if (Time.time < _nextFireTime) return;
         var before = _i.GetHoldingMeta();
+        Logger.LogRayProbe(_i); // [診断] 追加 : 発射直前に攻撃レイを実測
         _i.Self.Attack(false);
         Pressed = true;
         _nextFireTime = Time.time + Cfg.RangedFireIntervalSec;
