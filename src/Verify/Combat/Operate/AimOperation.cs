@@ -210,4 +210,15 @@ internal class AimOperation
         if (Cfg.SnapCameraOnFire && _i.Self.playerCamera != null && shotDir.sqrMagnitude > 1e-6f)
             _i.Self.playerCamera.transform.rotation = Quaternion.LookRotation(shotDir.normalized, Vector3.up);
     }
+
+    // ItemActionLauncher ( クロスボウ・ロケットランチャー ), LauncherPatternXX 専用
+    // 内容が RangeAimSnapCamera とほぼ同じ, RangeAimSnapCamera への副作用を防止するため分けて実装している
+    // RangeAimSnapCamera へ渡すフラグにより分岐を増やすか考え中
+    internal void RangeAimSnapCameraLauncher()
+    {
+        var shotDir = AimPoint - CamWorld;
+        _i.AdsOperation.RunLauncher(true);
+        if (Cfg.SnapCameraOnFire && _i.Self.playerCamera != null && shotDir.sqrMagnitude > 1e-6f)
+            _i.Self.playerCamera.transform.rotation = Quaternion.LookRotation(shotDir.normalized, Vector3.up);
+    }
 }
