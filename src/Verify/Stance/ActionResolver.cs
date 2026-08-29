@@ -19,8 +19,7 @@
  *
  */
 
-using System;
-using CompanionAIVerify.Combat;
+using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
 using CompanionAIVerify.ToolSelection;
 using UnityEngine;
@@ -52,6 +51,11 @@ namespace CompanionAIVerify.Stance;
  */
 internal class ActionResolver
 {
+    // 距離ヒステリシスのラッチ
+    // 両手武器保持時、デッドバンド内でモード維持
+    // 判断状態は resolver が持つ
+    private WeaponMode _modeLatch = WeaponMode.None;
+
     internal ActionResolver()
     {
         Action = Actions.None;
@@ -59,14 +63,26 @@ internal class ActionResolver
 
     internal Actions Action { get; private set; }
 
+    // WeaponSelector が持ち替える先の希望モード
+    //   この resolver の「武器の決定」
+    internal WeaponMode WantMode { get; private set; }
+
+    // フェーズ 1
+    //   どの武器モードで交戦するか決定 ( 在庫は変更しない )
+    //   早い判断と n8n 意図の差し込み口になる
     internal void Run(EntityPlayerLocal self, in ThreatInfo threat)
     {
-        // 仮実装 ... 現時点ではターゲットとの距離で判定を行うステップのみ用意
-        // CombatDriver.cs v0.7(A) から移植
-        // 交戦距離に応じた武器自動切替
-        WeaponSelector.RefreshLoadout(self, false);
-        if (WeaponSelector.MaybeSwitch(self, Mathf.Sqrt(threat.DistSq))) CombatDriver.ReleaseFireIfPressed(self);
+        WantMode = DecideMode(Mathf.Sqrt(threat.DistSq));
+        // TODO ( 遅い判断 )
+        // n8n の戻り値を受けて WantMode の調整を行うステップの追加
+    }
 
+    // フェーズ 2
+    //   交戦アクションを確定
+    //   WeaponSelector 実行の後に呼ぶ
+    //   実際に保持中の武器型からバインドするため、切替の可否・1 frame 遅延に関わらず held と必ず一致する
+    internal void ResolveAction(EntityPlayerLocal self)
+    {
         Action = ClassifyHeld(self) switch
         {
             HeldKinds.None => Actions.None,
@@ -76,6 +92,30 @@ internal class ActionResolver
             HeldKinds.Gun => Actions.Trigger01,
             _ => Actions.None
         };
+    }
+
+    // 仮実装
+    // 距離から希望モードへの変換
+    // 両手武器のときだけヒステリシス
+    // capability は WeaponSelector から読むだけ
+    // 何を使うかの判断の所在はここ
+    private WeaponMode DecideMode(float d)
+    {
+        var haveR = WeaponSelector.HasRanged;
+        var haveM = WeaponSelector.HasMelee;
+        if (!haveR && !haveM) return _modeLatch = WeaponMode.None;
+        if (haveR ^ haveM) return _modeLatch = haveR ? WeaponMode.Ranged : WeaponMode.Melee;
+
+        WeaponMode want;
+        if (d <= Cfg.SwitchToMeleeMeters) want = WeaponMode.Melee;
+        else if (d >= Cfg.SwitchToRangedMeters) want = WeaponMode.Ranged;
+        else
+            want = _modeLatch != WeaponMode.None
+                ? _modeLatch
+                : d <= (Cfg.SwitchToMeleeMeters + Cfg.SwitchToRangedMeters) * 0.5f
+                    ? WeaponMode.Melee
+                    : WeaponMode.Ranged;
+        return _modeLatch = want;
     }
 
     private HeldKinds ClassifyHeld(EntityPlayerLocal self)

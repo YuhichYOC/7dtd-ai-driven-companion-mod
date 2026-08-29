@@ -27,7 +27,7 @@ namespace CompanionAIVerify.Config;
 internal static class Cfg
 {
     internal const KeyCode ToggleKey = KeyCode.F8;
-    internal static string ModVersion = "0.8.1";
+    internal static string ModVersion = "0.8.3";
 
     internal static bool Enabled = false; // 起動時OFF。F8でトグル(ファイル対象外)
     internal static float StandoffMeters = 3.0f; // これ以内なら停止

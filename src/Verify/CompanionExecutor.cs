@@ -79,9 +79,15 @@ internal static class CompanionExecutor
         Logger.LogThreat(threat);
 
         // v0.8.1 ロジック動的切り替え
-        ActionResolver.Run(self, threat);
-        PositionResolver.Run(self, threat);
+        // v0.8.3 依存反転
+        //   [ データ ] RefreshLoadout ( 上で実行済 ) -> [ 判断 ] ActionResolver -> [ 実行 ] WeaponSelector -> [ 確定 ] ResolveAction
+        ActionResolver.Run(self, threat); // 判断 : どの武器モード ( WantMode )
+        PositionResolver.Run(self, threat); // 判断 : どの位置 ( 現状 Follow01 固定 )
+        var switched = WeaponSelector.ApplyMode(self, ActionResolver.WantMode);
+        ActionResolver.ResolveAction(self);
         CombatDriver.ActionResolver = ActionResolver;
+        // 切替を発火したフレームは交戦を1回休む ( settle )。移動は通常どおり
+        //   ApplyMode が切替前に ReleaseFireIfPressed 済 = 暴発防止。かつ held 反映の 1 frame 遅延もここで吸収
 
         // --- v0.8(B): 格闘オートアプローチ（follow より優先） ---
         //   格闘武器 かつ 交戦中脅威が「リーチ外 かつ approachMax 内」のとき、
@@ -89,7 +95,7 @@ internal static class CompanionExecutor
         //   接近steer の後に交戦オーバーレイを回して、リーチに入った瞬間から歩きながら振れるようにする。
         if (TryMeleeApproach(self, in threat))
         {
-            CombatDriver.OnCombatStep(self, threat);
+            if (!switched) CombatDriver.OnCombatStep(self, threat);
             return;
         }
 
@@ -137,7 +143,7 @@ internal static class CompanionExecutor
 
         // --- 交戦オーバーレイ（Section E）: 最後に実行 ---
         //   in-range の近接は 3D エイムで上の平面 facing を上書きしつつ press 駆動。
-        CombatDriver.OnCombatStep(self, threat);
+        if (!switched) CombatDriver.OnCombatStep(self, threat);
     }
 
     // v0.8(B): 格闘オートアプローチの判定＋実行。

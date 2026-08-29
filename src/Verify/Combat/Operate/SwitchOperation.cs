@@ -20,8 +20,6 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
-using CompanionAIVerify.Config;
-using CompanionAIVerify.ToolSelection;
 
 namespace CompanionAIVerify.Combat.Operate;
 
@@ -38,17 +36,11 @@ internal class SwitchOperation
 
     internal void Run()
     {
+        // v0.8.3
+        // 武器切り替えは WeaponSelector.ApplyMode に一元化
+        // settle も executor 側へ寄せた
+        // 現バージョンではこのクラスを残す
+        // 削除予定
         Switched = false;
-        // ★ v0.7(A)
-        // 交戦距離に応じた武器自動切替
-        // 切替した frame は settle のため即 return
-        WeaponSelector.RefreshLoadout(_i.Self, false);
-        if (Cfg.AutoWeaponSwitch && WeaponSelector.MaybeSwitch(_i.Self, _i.Distance))
-        {
-            // ★ [bow] 切替で武器が変わる前に、押下中のトリガー / ドローを安全開放する
-            //   弓ドロー中は release = 発射になるため、ここを通さないと切替の瞬間に暴発しうる
-            _i.ReleaseOperation.Run();
-            Switched = true;
-        }
     }
 }
