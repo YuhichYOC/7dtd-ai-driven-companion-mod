@@ -39,6 +39,15 @@ internal static class Cfg
     internal static float WaypointHeightTolM = 1.5f; // WP到達の高さ許容
     internal static float PathStaleSec = 3.0f; // これより古い経路は無視し直線へ戻す
 
+    // --- デバッグ・オーバーレイ ( 移動目的地の光柱, ver0.8.3 ) ---
+    //   有効化は設定ファイルのみ。F8 トグル ( Enabled ) とは独立した純表示
+    internal static bool DebugOverlay = false; // 緑=リーダー / 赤=追従中WP / 青=その他WP
+    internal static float DebugOverlayHeight = 2.0f; // 柱の高さ(m)
+    internal static float DebugOverlayWidth = 0.12f; // 柱の根元の幅(m)。先端は自動で細くなる
+    internal static bool DebugOverlayAutoShrink = true; // 自↔リーダーが近いほど柱を縮小（最小50%）
+    internal static float DebugOverlayShrinkNearM = 4.0f; // この距離以下で縮小開始、0mで50%
+    internal static bool DebugOverlayConnectWaypoints = true; // WPを配列順(経路順)に直線で結ぶ
+
     // --- 障害物ジャンプ（ver0.8.1） ---
     //   前進中に onGround(接地)＆isCollidedHorizontally(前方に詰まった)を検出し、前方セルが
     //   「脛の高さにブロック／頭の高さは空」＝1ブロック段差なら movementInput.jump で乗り越える。
