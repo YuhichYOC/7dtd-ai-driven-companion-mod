@@ -3,12 +3,34 @@ using HarmonyLib;
 using UnityEngine;
 
 // =============================================================================
-// Companion AI — locomotion + facing + threat-sensing + ENGAGE verification
+// Companion AI — locomotion + facing + threat-sensing + ENGAGE(melee+ranged)
 // (7DTD 3.1.0)
 // -----------------------------------------------------------------------------
-// このスライスで追加したもの: 交戦スライス（Section E）。
-//   (1) 交戦の手前で bFirstPersonView / TPCameraCheck を実ログ出力して確定。
-//   (2) アクティブ最近傍脅威が保持アイテムの射程内なら、近接攻撃を press 駆動で実行。
+// このスライスで追加したもの: 発砲スライス（Section F）。ver0.3(近接)に ranged を追加。
+//   (1) 交戦の手前で bFirstPersonView / TPCameraCheck を実ログ出力して確定（ver0.3から）。
+//   (2) 近接: アクティブ最近傍脅威が射程内なら press 駆動スイング（ver0.3から）。
+//   (3) 遠距離: 銃保持時、頭部狙点へエイム→press/release サイクルで発砲。
+//       弾切れはゲート自動リロード任せ、実発砲は Meta 差で検出しログ。
+//
+// ★ ranged 発火モデルの決定的な差（ver0.3 melee と異なる）:
+//   セミオート(BurstRoundCount==1)は bInitialPress（押下の立ち上がりフレーム）でしか
+//   発火しない(ItemActionRanged:1121,1160)。press を張り続けても初弾のみ。
+//   → 連射には press↔release サイクルが必須。melee の press 張りっぱなしは通用しない。
+//
+// ★ 弾切れ→自動リロード:
+//   空撃ち時 CanReload なら requestReload→GameManager.ItemReloadServer(1244-1246,622)。
+//   リロード中は Reloading() が press を吸収(1182)、明けたら再開。
+//   → トリガーを引き続けるだけでドライバ側のリロード管理は不要。
+//
+// ★ netsync: 発砲エフェクト/ダメージは ItemActionEffectsServer(1286) でサーバへ複製。
+//   ranged も直接 Attack() で netsync-safe（melee と同じ確定事項）。
+//
+// ★ 実発砲の検出: 弾はチャンバー基準 holdingItemItemValue.Meta(A4)が ConsumeAmmo(1264)
+//   で減る。press 前後の Meta 差で「実際に1発出た」を検出→ログ（swallow を誤カウントしない）。
+//
+// ★ ヘッドショット狙点: getHeadPosition()(Entity:2642=emodel.GetHeadPosition())。
+//   両端の頭で dir = target.getHeadPosition() - self.getHeadPosition() が最精度。
+//   （近接は SphereRadius 許容があるので従来どおり胴狙い +0.9m のまま）
 //
 // ★ bFirstPersonView が「実行時に決まる」ことの接地（監査より重要）:
 //   spawn/respawn 時 AfterPlayerRespawn(EPL:3715) → AttachedToEntity==null なら
@@ -72,11 +94,16 @@ namespace CompanionAIVerify
         internal static bool    CombatMode       = true;           // true=脅威を向く/叩く
         internal const  float   LogThrottleSec   = 0.5f;           // 検知/交戦ログの最小間隔
 
-        // --- 交戦スライス ---
-        internal const  float   ReachBuffer      = 0.5f;           // 射程判定の余裕(m)
+        // --- 交戦スライス（近接, ver0.3） ---
+        internal const  float   ReachBuffer      = 0.5f;           // 近接射程判定の余裕(m)
         // ★ まずは実ログで bFirstPersonView の実値を「観測」する。
         //   観測して false と分かったら、下を true にして spawn 経路の誤設定を自己修復する。
         internal static bool    ForceFirstPerson = false;
+
+        // --- 発砲スライス（遠距離, ver0.4） ---
+        internal static bool    EnableRangedFire     = true;       // false で従来の deferred ログのみ
+        internal const  float   RangedMaxEngageMeters= 18.0f;      // これ以内の脅威にのみ発砲(m)
+        internal const  float   RangedFireIntervalSec= 0.4f;       // 発砲ケイデンス(≒2.5発/秒)。個々の弾が見える程度に抑制
     }
 
     // --- Threat sensing ------------------------------------------------------
@@ -180,36 +207,36 @@ namespace CompanionAIVerify
     // --- Combat (engage slice) ----------------------------------------------
     internal static class CombatDriver
     {
-        private static bool  _attackPressed;
+        private static bool  _attackPressed;      // 近接: press 中フラグ
         private static float _nextEngageLogTime;
         private static bool  _fpvLogged;
         private static bool  _lastFpv;
+
+        // 遠距離: press/release マイクロサイクルとリロード可視化用
+        private static bool  _firePressed;        // 前フレームで press した→今フレーム release
+        private static float _nextFireTime;
+        private static int   _lastMeta = int.MinValue;
 
         // 交戦オーバーレイ。posture 決定の後に最後に呼ぶ（in-range 時の 3D エイムが
         // 平面 facing を同フレーム内で上書きするため）。
         internal static void OnCombatStep(EntityPlayerLocal self, in ThreatInfo threat)
         {
-            if (!Cfg.CombatMode || !threat.Valid) { ReleaseIfPressed(self); return; }
+            if (!Cfg.CombatMode || !threat.Valid) { ReleaseIfPressed(self); ReleaseFireIfPressed(self); return; }
 
             float reach = GetAttackReach(self);
             float d     = Mathf.Sqrt(threat.DistSq);
             bool  inRange = d <= reach + Cfg.ReachBuffer;
 
-            // ★ (1) 交戦の手前で bFirstPersonView を実ログ確定
-            if (inRange) ConfirmFirstPersonView(self);
-
             bool isRanged;
             bool melee = IsMeleeHolding(self, out isRanged);
 
-            if (!melee) // 遠距離は本スライスでは撃たない
+            // ★ (1) 交戦の手前で bFirstPersonView を実ログ確定（近接/遠距離とも）
+            bool aboutToEngage = isRanged ? (d <= Cfg.RangedMaxEngageMeters) : inRange;
+            if (aboutToEngage) ConfirmFirstPersonView(self);
+
+            if (isRanged) // ★ (3) 遠距離: 発砲スライス
             {
-                ReleaseIfPressed(self);
-                if (inRange && Time.time >= _nextEngageLogTime)
-                {
-                    _nextEngageLogTime = Time.time + 1.0f;
-                    Log.Out(string.Format(
-                        "[CompanionAI] engage: ranged holding within reach (d={0:0.0}m) — deferred, no fire this slice.", d));
-                }
+                RangedStep(self, in threat, d);
                 return;
             }
 
@@ -238,6 +265,98 @@ namespace CompanionAIVerify
                 self.Attack(true); // release（スイングの後始末）
                 _attackPressed = false;
             }
+        }
+
+        // 遠距離のトリガーも安全に開放（脅威消失/無効化/切替時に呼ぶ）。
+        internal static void ReleaseFireIfPressed(EntityPlayerLocal self)
+        {
+            if (_firePressed)
+            {
+                self.Attack(true);
+                _firePressed = false;
+            }
+        }
+
+        // ★ 発砲ドライバ。press(フレームN)→release(フレームN+1) を FireInterval ごとに回す。
+        //   セミオートは press の立ち上がりで1発。オート/バーストも1発ずつの安全ケイデンスに揃う。
+        //   弾切れ→自動リロードはゲート任せ。実発砲は Meta 差で検出。
+        private static void RangedStep(EntityPlayerLocal self, in ThreatInfo threat, float d)
+        {
+            if (!Cfg.EnableRangedFire) // 従来どおり撃たずにログのみ
+            {
+                ReleaseFireIfPressed(self);
+                if (d <= Cfg.RangedMaxEngageMeters && Time.time >= _nextEngageLogTime)
+                {
+                    _nextEngageLogTime = Time.time + 1.0f;
+                    Log.Out(string.Format(
+                        "[CompanionAI] engage: ranged holding within reach (d={0:0.0}m) — fire disabled.", d));
+                }
+                return;
+            }
+
+            if (d > Cfg.RangedMaxEngageMeters) { ReleaseFireIfPressed(self); return; }
+
+            // 頭部狙点へエイム（両端の頭ボーンで最精度）
+            FaceTargetHead(self, threat.Target);
+
+            // release フェーズ優先：前フレームで press 済みなら今フレームは離す
+            if (_firePressed)
+            {
+                self.Attack(true);
+                _firePressed = false;
+                return;
+            }
+
+            // press フェーズ：ケイデンス到来時のみ
+            if (Time.time < _nextFireTime) return;
+
+            int before = GetHoldingMeta(self);
+            self.Attack(false);                 // press = 発火(セミ)/開始(オート)
+            _firePressed = true;                // 次フレームで必ず release（内部ゲートに関わらず整定）
+            _nextFireTime = Time.time + Cfg.RangedFireIntervalSec;
+
+            int after = GetHoldingMeta(self);
+            if (after >= 0 && before >= 0)
+            {
+                if (after < before) // 実際に1発消費された＝発砲成立
+                {
+                    Log.Out(string.Format(
+                        "[CompanionAI] fire: {0} {1} d={2:0.0}m mag={3}",
+                        threat.Kind, threat.State, d, after));
+                }
+                else if (after == 0) // 空＝リロード待ち（ゲートが自動要求）
+                {
+                    if (_lastMeta != 0)
+                        Log.Out("[CompanionAI] fire: empty — waiting for auto-reload.");
+                }
+                else if (_lastMeta >= 0 && after > _lastMeta) // Meta 増加＝リロード完了
+                {
+                    Log.Out(string.Format("[CompanionAI] reload: done, mag={0}", after));
+                }
+                _lastMeta = after;
+            }
+        }
+
+        // 保持中アイテムの装填残弾(Meta)。取得不可は -1。 (A4: holdingItemItemValue.Meta)
+        private static int GetHoldingMeta(EntityPlayerLocal self)
+        {
+            var inv = self.inventory;
+            var iv  = inv != null ? inv.holdingItemItemValue : null;
+            return iv != null ? iv.Meta : -1;
+        }
+
+        // 頭部→頭部でエイム。ranged ショットは GetLookRay(camera) 由来なので
+        // SetRotation でカメラを向ければ着弾する（ItemActionRanged:1579, EPL:2310）。
+        private static void FaceTargetHead(EntityPlayerLocal self, EntityAlive target)
+        {
+            Vector3 eye  = self.getHeadPosition();
+            Vector3 head = target.getHeadPosition();
+            Vector3 dir  = head - eye;
+            if (dir.sqrMagnitude < 1e-6f) return;
+
+            Vector3 euler = Quaternion.LookRotation(dir.normalized, Vector3.up).eulerAngles;
+            euler.x *= -1f; // ピッチ反転（EPL:239, 251）
+            self.SetRotation(euler);
         }
 
         // 保持アイテム action[0] の射程。取れなければ素手相当 2.0m。
@@ -304,7 +423,7 @@ namespace CompanionAIVerify
             {
                 Cfg.Enabled = !Cfg.Enabled;
                 Log.Out("[CompanionAI] drive = " + Cfg.Enabled);
-                if (!Cfg.Enabled) { CombatDriver.ReleaseIfPressed(self); Stop(self); }
+                if (!Cfg.Enabled) { CombatDriver.ReleaseIfPressed(self); CombatDriver.ReleaseFireIfPressed(self); Stop(self); }
             }
             if (!Cfg.Enabled) return;
 
@@ -312,7 +431,7 @@ namespace CompanionAIVerify
             if (world == null || self != world.GetPrimaryPlayer()) return;
 
             EntityPlayer leader = FindNearestLeader(world, self);
-            if (leader == null) { CombatDriver.ReleaseIfPressed(self); Stop(self); return; }
+            if (leader == null) { CombatDriver.ReleaseIfPressed(self); CombatDriver.ReleaseFireIfPressed(self); Stop(self); return; }
 
             // --- 脅威検知（Section B） ---
             ThreatInfo threat = ThreatScanner.ScanNearestActiveThreat(world, self);
