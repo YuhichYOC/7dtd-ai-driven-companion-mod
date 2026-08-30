@@ -91,3 +91,7 @@ MeleeAimAssistHoldTicks    = 30
 DebugPinTargetToLeader     = false
 # テスト用: 敵対をその場に固定（approachMax 検証で静止した交戦中ゾンビを置く用・通常は false）
 DebugFreezeHostiles        = false
+
+# --- デバッグ・オーバーレイ（移動目的地の光柱）---
+# 目的地に光の柱: 緑=リーダー現在地 / 赤=追従中WP / 青=その他WP。表示のみ（挙動に影響なし）
+DebugOverlay               = false

@@ -119,6 +119,7 @@ internal static class ModCfgFile
             case "WaypointArriveM": return TryF(val, ref Cfg.WaypointArriveM);
             case "WaypointHeightTolM": return TryF(val, ref Cfg.WaypointHeightTolM);
             case "PathStaleSec": return TryF(val, ref Cfg.PathStaleSec);
+            case "DebugOverlay": return TryBool(val, ref Cfg.DebugOverlay);
             // ★ [jump] 障害物ジャンプ（v0.8.1）
             case "JumpObstacles": return TryBool(val, ref Cfg.JumpObstacles);
             case "JumpProbeAhead": return TryF(val, ref Cfg.JumpProbeAhead);
@@ -321,6 +322,10 @@ internal static class ModCfgFile
             $"# テスト用: ゾンビの標的をリーダーに固定（単独交戦で間合いを観察する用・通常は false）\n" +
             $"DebugPinTargetToLeader     = false\n" +
             $"# テスト用: 敵対をその場に固定（approachMax 検証で静止した交戦中ゾンビを置く用・通常は false）\n" +
-            $"DebugFreezeHostiles        = false\n";
+            $"DebugFreezeHostiles        = false\n" +
+            $"\n" +
+            $"# --- デバッグ・オーバーレイ（移動目的地の光柱）---\n" +
+            $"# 目的地に光の柱: 緑=リーダー現在地 / 赤=追従中WP / 青=その他WP。表示のみ（挙動に影響なし）\n" +
+            $"DebugOverlay               = false\n";
     }
 }

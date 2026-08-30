@@ -51,6 +51,17 @@ internal static class PathFollowState
         return _wps != null && _wps.Length > 0 && Time.time - _recvTime <= staleSec;
     }
 
+    // デバッグ・オーバーレイ専用の読み取り口
+    // 保持中の経路と追従 index を返すだけ ( 状態不変 )
+    //   targetIdx は前フレームの TryGetMoveTarget が確定した「向かうべきWP」
+    //   Sync は follow 分岐より前 ( : 66 ) で呼ばれるため、新経路到着直後の 1 フレームだけ targetIdx が旧値になり得る ( 表示のみ・害なし )
+    internal static bool DebugTryGetPath(float staleSec, out Vector3[] wps, out int targetIdx)
+    {
+        wps = _wps;
+        targetIdx = _idx;
+        return _wps != null && _wps.Length > 0 && Time.time - _recvTime <= staleSec;
+    }
+
     // PathWire.OnChunkClient から呼ばれる（クライアント側）
     internal static void SetPath(Vector3[] wps, string status)
     {

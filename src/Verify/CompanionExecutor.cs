@@ -27,6 +27,7 @@ using CompanionAIVerify.Positioning;
 using CompanionAIVerify.Stance;
 using CompanionAIVerify.ToolSelection;
 using CompanionAIVerify.Utility;
+using CompanionAIVerify.Utility.Debugging;
 using UnityEngine;
 using Logger = CompanionAIVerify.Log.Logger;
 
@@ -49,6 +50,7 @@ internal static class CompanionExecutor
             {
                 CombatDriver.ReleaseFireIfPressed(self);
                 Stop(self);
+                DebugOverlay.Hide();
             }
         }
 
@@ -62,8 +64,14 @@ internal static class CompanionExecutor
         {
             CombatDriver.ReleaseFireIfPressed(self);
             Stop(self);
+            DebugOverlay.Hide();
             return;
         }
+
+        // --- デバッグ・オーバーレイ ( 移動目的地の光柱 ) : world / leader 確定直後 ---
+        //   真実を読むだけ ( leader.position と PathFollowState の公開配列 )
+        //   移動ロジックは複製しない
+        DebugOverlay.Sync(leader);
 
         if (Cfg.Enabled)
         {

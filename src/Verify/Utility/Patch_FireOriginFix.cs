@@ -1,4 +1,4 @@
-﻿/*
+/*
  *
  * Patch_FireOriginFix.cs
  *
