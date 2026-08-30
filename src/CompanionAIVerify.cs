@@ -3,39 +3,45 @@ using HarmonyLib;
 using UnityEngine;
 
 // =============================================================================
-// Companion AI — locomotion + facing + threat-sensing verification harness
+// Companion AI — locomotion + facing + threat-sensing + ENGAGE verification
 // (7DTD 3.1.0)
 // -----------------------------------------------------------------------------
-// このスライスで追加したもの: 脅威検知（Section B）。
-//   近傍 EntityAlive を列挙 → 種別分類 → 三値覚醒状態 → 「アクティブ最近傍脅威」特定。
-//   可視確認のため、アクティブ脅威がいれば follow の lookDir をそちらへ差し替え、
-//   検知内容を throttle ログへ出す。
+// このスライスで追加したもの: 交戦スライス（Section E）。
+//   (1) 交戦の手前で bFirstPersonView / TPCameraCheck を実ログ出力して確定。
+//   (2) アクティブ最近傍脅威が保持アイテムの射程内なら、近接攻撃を press 駆動で実行。
 //
-// ★クライアント側で確定した重要事実（監査 B5 の訂正）:
-//   敵はコンパニオン(クライアント)から見て全て「リモート」。攻撃対象は
-//     - サーバ側フィールド attackTarget はネットで埋まらない
-//     - NetPackageSetAttackTarget → SetAttackTargetClient → attackTargetClient が埋まる
-//   よって攻撃対象は GetAttackTargetLocal()（remote時 attackTargetClient を返す）で読む。
-//   GetAttackTarget()/attackTarget 直読は不可。 (EntityAlive:5900-5907, 5930-5941)
+// ★ bFirstPersonView が「実行時に決まる」ことの接地（監査より重要）:
+//   spawn/respawn 時 AfterPlayerRespawn(EPL:3715) → AttachedToEntity==null なら
+//   SwitchToPreferredCameraMode(EPL:3645) が走る。そこで
+//     CameraRestrictionMode==0 → SetFirstPersonView(bPreferFirstPerson, ...)
+//     bPreferFirstPerson は OptionsGfxDefaultFirstPersonCamera(EPL:1282) 由来
+//     CameraRestrictionMode!=0 → SetFirstPersonView(num==1, ...)（サーバ強制）
+//   ＝ コンパニオンPCのグラフィック設定 or サーバ設定で false になり得る。
+//   → デフォルト true(EPL:395) は保証されない。だから実ログで確定させる。
 //
-//   IsSleeping は別扱いで安全: 起床時にサーバが NetPackageSleeperWakeup を送り、
-//   同一フィールド IsSleeping が更新される（client 専用フィールドなし）→ 直読可。
-//     (EntityAlive:440, 2651-2654)
+// ★ bFirstPersonView==true で攻撃ゲートが全消しになる接地:
+//   CharacterCameraAngleValid(EPL:5969): if(bFirstPersonView||Locked3rdPerson) return Pass;
+//   canStartAttack(ItemActionDynamicMelee:337): TPCamera分岐は { bFirstPersonView:false } 限定。
+//   さらに eTPCameraCheckResult.Pass==0（enum既定値）で二重に安全。
 //
-// 三値覚醒マッピング（クライアント接地版, 監査C章）:
-//   未覚醒 : IsSleeping == true
-//   交戦中 : GetAttackTargetLocal() == ローカルプレイヤー   ← 友軍判定は据え置き
-//   覚醒中 : IsSleeping == false ∧ 上記でない
-//   「アクティブ脅威」= 敵対 ∧ IsSleeping == false（＝覚醒中 or 交戦中）。未覚醒は向かない。
+// ★ 攻撃レイは camera 由来 → SetRotation で操舵できる:
+//   GetLookRay/GetMeleeRay(EPL:3847,3869) は playerCamera から発射。
+//   SetRotation(EPL:2310) は m_vp_FPCamera.Angle を更新 → facing用の SetRotation が
+//   そのまま攻撃レイを操舵する（facingスライスで視覚確認済みの経路を再利用）。
 //
-// 分類（最派生先行スイッチ, 監査B3）:
-//   EntityZombie → EntityEnemyAnimal → EntityHuman(非ゾンビ) → EntityEnemy → EntityAnimal → EntityPlayer
-//   動物は型で敵対性確定。非ゾンビ人間だけ EntityClass.bIsEnemyEntity で敵対性を確認
-//   （EntityClass getter は辞書引きなので、この分岐でのみ参照）(Entity:621, EntityAlive:4993)
+// ★ 実行モデル（ItemActionDynamicMelee）:
+//   Attack(false)=press: canStartAttack 通過で Attacking=true＝スイング開始(EAlive:6164→6142)
+//   Attack(true)=release: SetAttackFinished（後始末）
+//   実ヒットは hold 中に Inventory が holdingItem.OnHoldingUpdate(Inventory:403) を
+//   毎フレーム駆動して適用。press を張り続けると canStartAttack の APM 律速
+//   (ItemActionDynamicMelee:358) がケイデンスを自動制御 → 多重発火なし。
+//   ダメージのレプリケーションは下流 DamageEntity→SendToServer(NetPackageDamageEntity)
+//   に内包＝直接 Attack() 呼び出しは netsync-safe（監査確定事項）。
 //
-// 列挙: World.GetLivingEntitiesInBounds(EntityAlive 除外, Bounds) は
-//   再利用バッファ(毎回Clear)へ生存 EntityAlive のみ格納し自機を除外 → 毎フレーム走査でGC無。
-//   返り値は共有バッファのため、同フレーム内で即消費し保持しない。 (World:2358-2373)
+// 本スライスの範囲(意図的に絞る):
+//   - 近接のみ。Actions[0] is ItemActionRanged は「遠距離＝撃たない」でログのみ。
+//   - 脅威への接近(engage maneuver)は未実装。射程内に来た脅威のみ叩く（据え置き）。
+//   - 攻撃対象は「アクティブ最近傍脅威」。友軍(リーダー)狙い脅威の拾い上げは別スライス。
 //
 // 導入: COMPANION クライアントPCにのみ入れる。F8 で駆動ON/OFF。
 // 参照DLL: Assembly-CSharp.dll / UnityEngine.CoreModule.dll / 0Harmony.dll
@@ -50,7 +56,7 @@ namespace CompanionAIVerify
         {
             var harmony = new Harmony("companionai.verify");
             harmony.PatchAll();
-            Log.Out("[CompanionAI] verify harness loaded (follow + facing=SetRotation + threat-scan). F8 to toggle drive.");
+            Log.Out("[CompanionAI] verify harness loaded (follow + facing + threat-scan + engage). F8 to toggle drive.");
         }
     }
 
@@ -63,10 +69,14 @@ namespace CompanionAIVerify
         internal const  float   RunMeters        = 8.0f;           // これ以上離れたら走る
 
         internal const  float   ThreatScanRadius = 20.0f;          // 脅威走査半径(m)
-        // モード宣言の縫い目（本番はリーダー宣言で切替）。true=交戦モード相当（脅威を向く）。
-        // 移動モード配線は後段。false にすると脅威がいても進行方向を向く。
-        internal static bool    CombatMode       = true;
-        internal const  float   LogThrottleSec   = 0.5f;           // 検知ログの最小間隔
+        internal static bool    CombatMode       = true;           // true=脅威を向く/叩く
+        internal const  float   LogThrottleSec   = 0.5f;           // 検知/交戦ログの最小間隔
+
+        // --- 交戦スライス ---
+        internal const  float   ReachBuffer      = 0.5f;           // 射程判定の余裕(m)
+        // ★ まずは実ログで bFirstPersonView の実値を「観測」する。
+        //   観測して false と分かったら、下を true にして spawn 経路の誤設定を自己修復する。
+        internal static bool    ForceFirstPerson = false;
     }
 
     // --- Threat sensing ------------------------------------------------------
@@ -84,12 +94,9 @@ namespace CompanionAIVerify
 
     internal static class ThreatScanner
     {
-        // 走査結果の要約（ログ用）
         internal static int LastHostileCount;
         internal static int LastSleepingCount;
 
-        // 近傍の「アクティブ最近傍脅威」を返す。無ければ Valid=false。
-        // 副産物として敵対数/睡眠数を集計（検証ログ用）。
         internal static ThreatInfo ScanNearestActiveThreat(World world, EntityPlayerLocal self)
         {
             ThreatInfo best = default; // Valid=false
@@ -100,7 +107,6 @@ namespace CompanionAIVerify
             float r = Cfg.ThreatScanRadius;
             var box = new Bounds(self.position, new Vector3(r * 2f, r * 2f, r * 2f));
 
-            // 共有バッファ。同フレーム内で即消費する（保持しない）。
             List<EntityAlive> found = world.GetLivingEntitiesInBounds(self, box);
             if (found == null) return best;
 
@@ -111,18 +117,17 @@ namespace CompanionAIVerify
                 if (e == null || e == self || e.IsDead()) continue;
 
                 ThreatKind kind = Classify(e);
-                if (!IsHostile(kind)) continue; // プレイヤー・非敵対動物は脅威でない
+                if (!IsHostile(kind)) continue;
 
                 Vector3 d = e.position - self.position;
                 float dSq = d.sqrMagnitude;
-                if (dSq > rSq) continue; // 箱の角を落として球で絞る
+                if (dSq > rSq) continue;
 
                 LastHostileCount++;
 
                 Awareness st = GetAwareness(e, self);
-                if (st == Awareness.Unawakened) { LastSleepingCount++; continue; } // 未覚醒は向かない
+                if (st == Awareness.Unawakened) { LastSleepingCount++; continue; }
 
-                // アクティブ脅威候補: 最近傍を採用
                 if (dSq < best.DistSq)
                 {
                     best.Target = e;
@@ -135,20 +140,19 @@ namespace CompanionAIVerify
             return best;
         }
 
-        // 静的kind軸（最派生先行）。動的敵対性は GetAwareness が担当。
         private static ThreatKind Classify(EntityAlive e)
         {
             switch (e)
             {
-                case EntityZombie _:        return ThreatKind.Zombie;         // 常に敵対
-                case EntityEnemyAnimal _:   return ThreatKind.EnemyAnimal;    // 型で敵対確定
-                case EntityHuman _:         // ゾンビは上で除外済 → 生身の人間
+                case EntityZombie _:        return ThreatKind.Zombie;
+                case EntityEnemyAnimal _:   return ThreatKind.EnemyAnimal;
+                case EntityHuman _:
                     return e.EntityClass != null && e.EntityClass.bIsEnemyEntity
                         ? ThreatKind.HostileHuman
-                        : ThreatKind.Unknown; // 非敵対人間(NPC等)は脅威扱いしない
-                case EntityEnemy _:         return ThreatKind.OtherEnemy;     // 将来クラスの保険
-                case EntityAnimal _:        return ThreatKind.PassiveAnimal;  // 非敵対
-                case EntityPlayer _:        return ThreatKind.Player;         // リーダー/友軍/他人
+                        : ThreatKind.Unknown;
+                case EntityEnemy _:         return ThreatKind.OtherEnemy;
+                case EntityAnimal _:        return ThreatKind.PassiveAnimal;
+                case EntityPlayer _:        return ThreatKind.Player;
                 default:                    return ThreatKind.Unknown;
             }
         }
@@ -161,23 +165,136 @@ namespace CompanionAIVerify
                 || k == ThreatKind.OtherEnemy;
         }
 
-        // 三値覚醒（クライアント接地）: 攻撃対象は GetAttackTargetLocal() で読む。
         private static Awareness GetAwareness(EntityAlive e, EntityPlayerLocal self)
         {
             if (e.IsSleeping) return Awareness.Unawakened;
 
             EntityAlive tgt = e.GetAttackTargetLocal(); // remote時 attackTargetClient
             if (tgt != null && tgt.entityId == self.entityId)
-                return Awareness.Engaged; // ローカルプレイヤーを狙っている（友軍判定は据え置き）
+                return Awareness.Engaged;
 
             return Awareness.Awakening;
+        }
+    }
+
+    // --- Combat (engage slice) ----------------------------------------------
+    internal static class CombatDriver
+    {
+        private static bool  _attackPressed;
+        private static float _nextEngageLogTime;
+        private static bool  _fpvLogged;
+        private static bool  _lastFpv;
+
+        // 交戦オーバーレイ。posture 決定の後に最後に呼ぶ（in-range 時の 3D エイムが
+        // 平面 facing を同フレーム内で上書きするため）。
+        internal static void OnCombatStep(EntityPlayerLocal self, in ThreatInfo threat)
+        {
+            if (!Cfg.CombatMode || !threat.Valid) { ReleaseIfPressed(self); return; }
+
+            float reach = GetAttackReach(self);
+            float d     = Mathf.Sqrt(threat.DistSq);
+            bool  inRange = d <= reach + Cfg.ReachBuffer;
+
+            // ★ (1) 交戦の手前で bFirstPersonView を実ログ確定
+            if (inRange) ConfirmFirstPersonView(self);
+
+            bool isRanged;
+            bool melee = IsMeleeHolding(self, out isRanged);
+
+            if (!melee) // 遠距離は本スライスでは撃たない
+            {
+                ReleaseIfPressed(self);
+                if (inRange && Time.time >= _nextEngageLogTime)
+                {
+                    _nextEngageLogTime = Time.time + 1.0f;
+                    Log.Out(string.Format(
+                        "[CompanionAI] engage: ranged holding within reach (d={0:0.0}m) — deferred, no fire this slice.", d));
+                }
+                return;
+            }
+
+            if (!inRange) { ReleaseIfPressed(self); return; }
+
+            // ★ (2) 近接交戦: 3Dエイム（ピッチ込み）→ press 駆動スイング
+            FaceTarget3D(self, threat.Target);
+
+            if (self.Attack(false)) // press。ケイデンスは canStartAttack の APM 律速が制御
+            {
+                _attackPressed = true;
+                if (Time.time >= _nextEngageLogTime)
+                {
+                    _nextEngageLogTime = Time.time + Cfg.LogThrottleSec;
+                    Log.Out(string.Format(
+                        "[CompanionAI] engage: swing {0} {1} d={2:0.0}m reach={3:0.0}m",
+                        threat.Kind, threat.State, d, reach));
+                }
+            }
+        }
+
+        internal static void ReleaseIfPressed(EntityPlayerLocal self)
+        {
+            if (_attackPressed)
+            {
+                self.Attack(true); // release（スイングの後始末）
+                _attackPressed = false;
+            }
+        }
+
+        // 保持アイテム action[0] の射程。取れなければ素手相当 2.0m。
+        private static float GetAttackReach(EntityPlayerLocal self)
+        {
+            var hi = self.inventory != null ? self.inventory.holdingItem : null;
+            var a  = (hi != null && hi.Actions != null && hi.Actions.Length > 0) ? hi.Actions[0] : null;
+            if (a != null && a.Range > 0.01f) return a.Range;
+            return 2.0f;
+        }
+
+        // 近接か遠距離か。ItemActionRanged のみ遠距離扱い、それ以外(素手/工具/近接武器)は近接。
+        private static bool IsMeleeHolding(EntityPlayerLocal self, out bool isRanged)
+        {
+            var hi = self.inventory != null ? self.inventory.holdingItem : null;
+            var a  = (hi != null && hi.Actions != null && hi.Actions.Length > 0) ? hi.Actions[0] : null;
+            isRanged = a is ItemActionRanged;
+            return !isRanged;
+        }
+
+        // 交戦の手前で bFirstPersonView を実ログ。初回 or 変化時のみ出力。
+        private static void ConfirmFirstPersonView(EntityPlayerLocal self)
+        {
+            bool fpv = self.bFirstPersonView;
+            if (_fpvLogged && fpv == _lastFpv) return;
+
+            _fpvLogged = true;
+            _lastFpv   = fpv;
+            Log.Out(string.Format(
+                "[CompanionAI] engage-precheck: bFirstPersonView={0} TPCam={1} camPassed={2}",
+                fpv, self.TPCameraCheckResult, self.TPCameraCheckPassed));
+
+            if (!fpv && Cfg.ForceFirstPerson)
+            {
+                self.SetFirstPersonView(true, false); // spawn経路の誤設定を自己修復
+                Log.Out("[CompanionAI] engage-precheck: forced bFirstPersonView=true (ForceFirstPerson).");
+            }
+        }
+
+        // ピッチ込みで対象中心付近を狙う（低い脅威にも当てるため y を潰さない）。
+        // 変換式は facing と同一（EPL:2310, 248-252）。camera 経由で攻撃レイが操舵される。
+        private static void FaceTarget3D(EntityPlayerLocal self, EntityAlive target)
+        {
+            Vector3 eye = self.position + Vector3.up * 1.5f;   // 概算カメラ高
+            Vector3 aim = target.position + Vector3.up * 0.9f; // 概算胴中心
+            Vector3 dir = aim - eye;
+            if (dir.sqrMagnitude < 1e-6f) return;
+
+            Vector3 euler = Quaternion.LookRotation(dir.normalized, Vector3.up).eulerAngles;
+            euler.x *= -1f; // ピッチ反転（EPL:239, 251）
+            self.SetRotation(euler);
         }
     }
 
     // --- Executor ------------------------------------------------------------
     internal static class CompanionExecutor
     {
-        // 検知ログの変化検出用
         private static int   _lastLoggedThreatId = int.MinValue;
         private static float _nextLogTime;
 
@@ -187,7 +304,7 @@ namespace CompanionAIVerify
             {
                 Cfg.Enabled = !Cfg.Enabled;
                 Log.Out("[CompanionAI] drive = " + Cfg.Enabled);
-                if (!Cfg.Enabled) Stop(self);
+                if (!Cfg.Enabled) { CombatDriver.ReleaseIfPressed(self); Stop(self); }
             }
             if (!Cfg.Enabled) return;
 
@@ -195,7 +312,7 @@ namespace CompanionAIVerify
             if (world == null || self != world.GetPrimaryPlayer()) return;
 
             EntityPlayer leader = FindNearestLeader(world, self);
-            if (leader == null) { Stop(self); return; }
+            if (leader == null) { CombatDriver.ReleaseIfPressed(self); Stop(self); return; }
 
             // --- 脅威検知（Section B） ---
             ThreatInfo threat = ThreatScanner.ScanNearestActiveThreat(world, self);
@@ -205,8 +322,6 @@ namespace CompanionAIVerify
             Vector3 flat = leader.position - self.position; flat.y = 0f;
             float dist = flat.magnitude;
 
-            // 体の向き: 交戦モード ∧ アクティブ脅威あり → 脅威を向く。さもなくば進行方向。
-            //   （未覚醒脅威は Scan 側で除外済 = 向かない = 設計どおり）
             Vector3 lookDir = flat;
             if (Cfg.CombatMode && threat.Valid)
             {
@@ -216,16 +331,19 @@ namespace CompanionAIVerify
 
             if (dist <= Cfg.StandoffMeters)
             {
-                // 追従は停止。ただし脅威がいれば体だけ向ける（stationary facing）。
                 if (Cfg.CombatMode && threat.Valid) FaceOnly(self, lookDir);
                 Stop(self);
-                return;
+            }
+            else
+            {
+                Steer(self, moveTarget: leader.position, lookDir: lookDir, running: dist > Cfg.RunMeters);
             }
 
-            Steer(self, moveTarget: leader.position, lookDir: lookDir, running: dist > Cfg.RunMeters);
+            // --- 交戦オーバーレイ（Section E）: 最後に実行 ---
+            //   in-range の近接は 3D エイムで上の平面 facing を上書きしつつ press 駆動。
+            CombatDriver.OnCombatStep(self, threat);
         }
 
-        // R_steer: move(どこへ) と look(どこを向く) を独立入力に。
         private static void Steer(EntityPlayerLocal self, Vector3 moveTarget, Vector3 lookDir, bool running)
         {
             Vector3 toTarget = moveTarget - self.position; toTarget.y = 0f;
@@ -237,7 +355,7 @@ namespace CompanionAIVerify
             if (ld.sqrMagnitude > 0.001f)
             {
                 lookFwd = ld.normalized;
-                FaceWorldDir(self, lookFwd);          // SetRotation 経路
+                FaceWorldDir(self, lookFwd);
             }
             else
             {
@@ -252,21 +370,17 @@ namespace CompanionAIVerify
             self.movementInput.down        = false;
         }
 
-        // 停止中に体だけ向ける（移動入力は変えない）。
         private static void FaceOnly(EntityPlayerLocal self, Vector3 lookDir)
         {
             Vector3 ld = lookDir; ld.y = 0f;
             if (ld.sqrMagnitude > 0.001f) FaceWorldDir(self, ld.normalized);
         }
 
-        // facing（検証パターン(1): SetRotation 経路）。game 本体の look-at と同一変換。
-        //   (EntityPlayerLocal:2310-2321, Entity:2581-2585 / 変換式 EPL:248-252)
-        //   パターン(2)へ切替時はこの関数の中身のみ差し替え。
         private static void FaceWorldDir(EntityPlayerLocal self, Vector3 worldDir)
         {
             if (worldDir.sqrMagnitude < 1e-6f) return;
             Vector3 euler = Quaternion.LookRotation(worldDir.normalized, Vector3.up).eulerAngles;
-            euler.x *= -1f;                            // ピッチ反転（EPL:239, 251）
+            euler.x *= -1f;
             self.SetRotation(euler);
         }
 
@@ -295,7 +409,6 @@ namespace CompanionAIVerify
             return best;
         }
 
-        // 検証ログ: 対象が変わった時、または throttle 間隔ごとに要約を出す。
         private static void LogThreat(ThreatInfo t)
         {
             int id = t.Valid ? t.Target.entityId : int.MinValue;
