@@ -397,6 +397,26 @@ internal static class Logger
         );
     }
 
+    // [診断用ログ出力] 発射直前の攻撃レイ原点 / 方向を実測
+    //   originYtoFeet = 原点の足元からの高さ / behind = 照準水平方向に対し前(+)か背後(-)か
+    //   判定 : fpv = false もしくは ( originYtoFeet が低い & behind < 0 ) なら
+    //         非 FPV ( 後方上方カメラ ) 由来の origin ずれ = 今回の「足元やや背後」を実証
+    internal static void LogRayProbe(InfoHolder i)
+    {
+        var r = i.Self.GetLookRay();
+        var d = r.origin - i.Self.position; // Origin.position 非依存(両者 world 系)
+        var f = i.Self.GetLookVector();
+        var ff = new Vector3(f.x, 0f, f.z);
+        if (ff.sqrMagnitude > 1e-6f) ff.Normalize();
+        var behind = Vector3.Dot(new Vector3(d.x, 0f, d.z), ff);
+        PrintLog(
+            $"[CompanionAI] ray-probe: fpv={i.Self.bFirstPersonView} " +
+            $"camDist={i.Self.vp_FPCamera.CurrentCameraDistance:0.00} " +
+            $"originYtoFeet={d.y:0.00} behind={behind:0.00} " +
+            $"dir=({r.direction.x:0.00},{r.direction.y:0.00},{r.direction.z:0.00})"
+        );
+    }
+
     internal static void LogDebug(string message)
     {
         LogLib::Log.Out(message);
