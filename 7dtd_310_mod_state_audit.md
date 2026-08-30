@@ -284,3 +284,82 @@ false だった場合の対処は `SetFirstPersonView(true, false)` の一発自
 - **リロード完了ログの取りこぼし**: 順序上「fire mag=N」の mag 跳ね上がりでリロードは可視化されるが、
   明示的 "reload done" は出ないケースあり（動作は正常、ログ表現のみ）。
 - **弾/狙点の使い分け（頭 vs 胴）**: 遠距離ヘッドショット狙いは頭固定。装甲や状況での胴狙い切替は将来。
+
+## 確定追記（2026-08-18b, ホスト側経路生成→クライアント追従の確定 / ルートA′）
+
+前追記 N1–N5（クライアント側 vanilla 経路探索は4層で不能）を前提に、「ホスト(リーダー側)で
+経路を生成し、結果をコンパニオンのクライアントへ送って追従させる」構成が実装可能であることを、
+A* 一式の逆コンパイル実物で確定した。適用スコープはリーダー中心・追従グリッド内
+（1拠点/POI＋隣接1棟）・ゾンビ相当移動に限定する。
+
+### P1 A* 一式はサーバ専用 / グリッドは全プレイヤーに追従（＝スコープ内で被覆保証）
+- `AstarManager.Init` は `IsServer` かつ GameWorld≠"Empty" のときのみ生成(AstarManager:172-179)。
+  → クライアントでは `AstarManager.Instance` は null（前追記 N3 と整合）。
+- `UpdateGraphs` が毎更新(0.1s)で `world.Players.list` を走査し、**各プレイヤー位置に `Merge(pos, 76)`**(AstarManager:366-374)。
+  コンパニオンもプレイヤーなので、**ホスト上ではコンパニオン周囲に生きたグリッドが常駐**する。
+- グリッド実寸 = 76m四方 @1mノード(`cGridXZSize=76` AstarManager:96 / `AddGraph`→`SetDimensions(size,size,1f)` :745)。
+  プレイヤー同士が19m以内で併合(`cPlayerMergeDistSq=361` :124 / `Merge` :426)。
+  → 最大スコープ(1拠点/POI＋隣接1棟)は1グリッド内に収まる。**被覆は問題にならない。**
+
+### P2 探索は entity.navigator 経由 → player に navigator を1個与える（ルートA′）
+- 実体スレッド(`PathFinderThread.Instance`)の worker は `pathInfo.entity.navigator.GetPathTo(pathInfo)` を呼ぶ
+  (AStarPathFinderThread.cs:80。生成は AstarManager:178)。
+  ※注意: 生成側は `ASPPathFinderThread`、実体ファイルのクラス宣言は `AStarPathFinderThread`。
+    逆コンパイル出力の ASP/AStar 綴り差。実 identifier は実ソースで要確認（挙動・結論には影響なし）。
+- コンパニオンは navigator=null(前追記 N1)のため、素の `FindPath(companion,…)` は worker で NRE。
+- **回避策=ルートA′**: `companion.navigator = AstarManager.CreateNavigator(companion)` を遅延生成で1回だけ付与。
+  `CreateNavigator` は public static、内部で `new ASPPathNavigate(_entity)` を返す(AstarManager:197-200)。
+  `ASPPathNavigate` は internal だが、戻り値・`navigator` フィールドとも public 基底 `PathNavigate` 型なので
+  **全て public API で完結**（internal 型に触れない）。
+- 以後は zombie と同一の `FindPath`(AStarPathFinderThread:111-122) / `GetPath`(:124-135) サイクルをそのまま使う。
+  完了ハンドリング(worker + `PathInfo.OnPathResult`)を自作せずに済むのが本ルートの要点。
+
+### P3 canNavigate / CreatePath は player でも通過する
+- `canNavigate()`→`theEntity.CanNavigatePath()`(PathNavigate:86-89 / EntityAlive:3164-3171)。
+  実装は `onGround || isSwimming || bInElevator` で true、空中のみ `Climbing`。EntityPlayer/Local に override 無し。
+  → **接地中のコンパニオンで true**。
+- `CreatePath()`(ASPPathNavigate:146-157) がエンティティから使うのは
+  `bCanClimbLadders` / `bCanClimbVertical` / `position` / `motion` のみ（いずれも player で有効）。
+  始点は `position + motion*2.5`、または `PathInfo.SetStartPos()`(PathInfo:48-52)で明示指定可。
+- 得られる経路の踏破性はグリッド固定(`maxClimb=1.3` AstarManager:746 / `maxSlope=60` :747 /
+  capsuleØ0.3×h1.5 :752-753 / `characterHeight=1.8` :744) = **ゾンビ相当**。エンティティ側調整不要。
+
+### P4 navigator 付与の安全性（自走しない）
+- navigator を毎tick駆動する `updateTasks()` は `!IsClientControlled()` ゲート(EntityAlive:3398)。
+  `EntityPlayer.IsClientControlled()` は無条件 true(EntityPlayer:1179-1182)。→ player では駆動ループが走らない。
+- よって navigator を持たせても副作用で動き出すことはなく、**MOD が明示的に `FindPath`/`GetPath` を
+  呼んだときだけ**使われる。生成は遅延1回・保持でよい。
+
+### P5 送信ペイロード = PathEntity.points[].projectedLocation（public 直読み・ワールド座標）
+- `GetPath` の返す `PathInfo.path` は `PathEntity`(PathInfo:35)。
+  `PathEntity.points`(public `PathPoint[]` PathEntity:7)、各 `PathPoint.projectedLocation`(public Vector3 PathPoint:7)。
+- `projectedLocation` は**絶対ワールド座標**。根拠: `pathFollow()` で `theEntity.position`(ワールド)と直接
+  線分計算している(ASPPathNavigate:93-95)。→ そのまま送ればクライアントは自機 position と同座標系で扱える。
+  worldOrigin 補正は不要。
+- `ProjectToGround(entity)` はこのビルドでは projectedLocation を返すだけの no-op(PathPoint:96-99)。投影処理不要。
+- 抽出は `pi.path.HasPoints()`(PathEntity:50-53) を確認し `points[i].projectedLocation` を `Vector3[]` へコピー。
+  → クライアントは `PathEntity` を一切必要とせず、`Vector3[]` を追従するだけ。
+
+### P6 実装時の必須注意
+- **プール返却**: `PathPoint` はプール割り当て(`Allocate` PathPoint:21-33 / `Release` :43-49)、
+  `PathEntity.Destruct()` が全点を解放(PathEntity:34-42)。今回は追従させず抽出のみのため、
+  navigator の SetPath ライフサイクルが Destruct を呼ばない。→ **同tickで projectedLocation をコピー→即 `Destruct()`。
+  PathEntity/PathPoint を跨tickで保持しない**（プール再利用で参照破損する）。
+- **範囲境界**: 直接 `PathFinderThread.FindPath` を呼ぶため `EntityAlive.FindPath` の35mクランプ(EntityAlive:5707)は
+  適用されない。実効上限は追従グリッドの76m。目標がグリッド外だと `path` が null で返るので、
+  その場合は安全側（recall / 定点保持）へフォールバックする分岐を置く。
+- **中継必須**: クライアントは `AstarManager.Instance` が null で直接探索不可。ホスト計算→クライアント追従の
+  中継は必然。送信路は NetPackage（本番）/ チャット（PoC）。navigation はホットパスでないため PoC 段階の
+  チャット transport で機能検証してから NetPackage へ載せ替える。
+
+### 「取得不能 → 補完候補」表 追補（前追記の client-side pathfinding 行を更新）
+| 情報 | 状況 | 確定した手段 | 備考 |
+|---|---|---|---|
+| コンパニオンの経路探索 | クライアント直接は不能(N1–N5) | **ホスト計算→クライアント追従（ルートA′）**: host 側で player に navigator 付与→`FindPath`/`GetPath`→`projectedLocation` 列を送信 | スコープ=グリッド76m内・ゾンビ相当。範囲外は安全側フォールバック |
+
+### スライス分割（slice-based verification）
+1. **ホスト側 発注＋抽出**: navigator 遅延生成→`FindPath`→`GetPath`→`Vector3[]` 抽出→ログ出力のみ（送信なし）。
+   グリッド内で妥当な経路点列が採れることをログで検証。単独で閉じる。
+2. **送信路（チャットPoC）**: `Vector3[]` を量子化・連番分割で送出、クライアントで受信・表示抑止・再結合。
+3. **クライアント側 追従**: 受信ウェイポイントを `MoveByInput` で辿る。到達判定は `pathFollow()`
+   (ASPPathNavigate:91-143、`radius*0.6` 半径・高さ差許容)を写経してホスト想定と挙動を揃える。
