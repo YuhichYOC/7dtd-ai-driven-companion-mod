@@ -25,14 +25,20 @@
 //     - 緑 : リーダー現在地      leader.position
 //     - 赤 : 追従中WP            PathFollowState._idx（DebugTryGetPath 経由）
 //     - 青 : その他WP           上記以外の PathFollowState._wps[]
-//   経路が古い/無い場合は WP を出さず緑のみ（＝直線フォールバック中を素直に映す）。
+//     - 白線: WP を配列順(=経路順)に結ぶ折れ線（DebugOverlayConnectWaypoints）
+//   経路が古い/無い場合は WP と接続線を出さず緑のみ（＝直線フォールバック中を映す）。
+//
+//   サイズ:
+//     - 高さ/幅は設定ファイル（DebugOverlayHeight/Width）で調整。
+//     - 自↔リーダーが近いほど一律に縮小（DebugOverlayAutoShrink）。ShrinkNearM 以下で
+//       縮小開始、0m で 50%（下限固定）。camera≒self なので緑柱の見かけサイズ補償になる。
 //
 //   実装方針:
 //     - LineRenderer プールを遅延生成。レンダーパイプライン/カメラコールバックに非依存。
 //     - マテリアルは本体が Shader.Find 済みの "Unlit/Transparent Colored" を頂点カラーで使用。
-//       1枚を全柱で共有し、色は LineRenderer の startColor/endColor（頂点カラー）で出す。
+//       1枚を全要素で共有し、色は startColor/endColor（頂点カラー）で出す。
 //     - 後始末: ワールド再ロードで GameObject が破棄されると Unity の fake-null になるため
-//       GetOrCreate の null チェックで自動再生成。無効時/リーダー喪失時は Hide() で消灯。
+//       null チェックで自動再生成。無効時/リーダー喪失時は Hide() で消灯。
 // =============================================================================
 
 using System.Collections.Generic;
@@ -44,22 +50,24 @@ namespace CompanionAIVerify.Utility.Debugging;
 
 internal static class DebugOverlay
 {
-    // 見た目（デバッグ専用の固定値。config 化しない）
-    private const float PillarHeight = 4.0f; // 柱の高さ(m)
-    private const float WidthBottom = 0.18f; // 根元の幅(m)
-    private const float WidthTop = 0.05f; // 先端の幅(m)
-    private const float BaseAlpha = 0.6f; // 根元のα（先端は0へフェード＝光柱感）
+    private const float TopWidthRatio = 0.3f; // 先端幅 = 根元幅 × これ（固定テーパー）
+    private const float MinShrinkScale = 0.5f; // 近接時の下限スケール（＝「半分まで」）
 
-    private static readonly Color CLeader = new(0f, 1f, 0f, BaseAlpha); // 緑
-    private static readonly Color CTarget = new(1f, 0f, 0f, BaseAlpha); // 赤（追従中WP）
-    private static readonly Color COther = new(0.25f, 0.55f, 1f, BaseAlpha); // 青（その他WP）
+    private const float PathLineWidth = 0.05f; // WP接続線の基準太さ(m)
+    private const float PathLineLift = 0.08f; // 接続線を地面から少し浮かせ z-fight 回避(m)
+
+    private static readonly Color CLeader = new(0f, 1f, 0f, 0.6f); // 緑
+    private static readonly Color CTarget = new(1f, 0f, 0f, 0.6f); // 赤（追従中WP）
+    private static readonly Color COther = new(0.25f, 0.55f, 1f, 0.6f); // 青（その他WP）
+    private static readonly Color CPathLine = new(1f, 1f, 1f, 0.35f); // 白（WP接続線）
 
     private static Material _mat;
     private static readonly List<LineRenderer> Pool = new();
     private static int _activeCount;
+    private static LineRenderer _pathLine;
 
     // OnMovePrefix から毎フレーム（leader 確定後）。表示 or 消灯を config で分岐。
-    internal static void Sync(EntityPlayer leader)
+    internal static void Sync(EntityPlayerLocal self, EntityPlayer leader)
     {
         if (!Cfg.DebugOverlay)
         {
@@ -67,16 +75,17 @@ internal static class DebugOverlay
             return;
         }
 
+        var scale = ComputeScale(self, leader);
         var used = 0;
 
         // 緑: リーダー現在地
-        if (leader != null) SetPillar(used++, leader.position, CLeader);
+        if (leader != null) SetPillar(used++, leader.position, CLeader, scale);
 
-        // WP: follow-state が今保持している配列＋追従index を読むだけ（ロジック複製なし）。
-        //   fresh でなければ WP は出さない（＝直線フォールバック中を映す）。
-        if (PathFollowState.DebugTryGetPath(Cfg.PathStaleSec, out var wps, out var targetIdx))
+        // WP: follow-state の保持配列＋追従index を読むだけ（ロジック複製なし）。fresh でなければ出さない。
+        var haveWps = PathFollowState.DebugTryGetPath(Cfg.PathStaleSec, out var wps, out var targetIdx);
+        if (haveWps)
             for (var i = 0; i < wps.Length; i++)
-                SetPillar(used++, wps[i], i == targetIdx ? CTarget : COther);
+                SetPillar(used++, wps[i], i == targetIdx ? CTarget : COther, scale);
 
         // 余ったプールを消灯
         for (var i = used; i < _activeCount; i++)
@@ -84,9 +93,15 @@ internal static class DebugOverlay
                 Pool[i].gameObject.SetActive(false);
 
         _activeCount = used;
+
+        // WP接続線（順序＝配列順＝経路順）。2点以上あるときだけ。
+        if (Cfg.DebugOverlayConnectWaypoints && haveWps && wps.Length >= 2)
+            SetPathLine(wps, scale);
+        else
+            HidePathLine();
     }
 
-    // 無効時/リーダー喪失時/トグルOFF時に呼ぶ。全柱を消灯（破棄はしない＝再表示が軽い）。
+    // 無効時/リーダー喪失時/トグルOFF時に呼ぶ。全要素を消灯（破棄はしない＝再表示が軽い）。
     internal static void Hide()
     {
         for (var i = 0; i < _activeCount; i++)
@@ -94,40 +109,89 @@ internal static class DebugOverlay
                 Pool[i].gameObject.SetActive(false);
 
         _activeCount = 0;
+        HidePathLine();
     }
 
-    private static void SetPillar(int index, Vector3 basePos, Color color)
+    // 自↔リーダー距離から一律スケールを算出。Near 以下で MinShrinkScale へ線形に縮む。
+    private static float ComputeScale(EntityPlayerLocal self, EntityPlayer leader)
+    {
+        if (!Cfg.DebugOverlayAutoShrink || self == null || leader == null) return 1f;
+
+        var flat = leader.position - self.position;
+        flat.y = 0f;
+        var near = Mathf.Max(0.01f, Cfg.DebugOverlayShrinkNearM);
+        return Mathf.Lerp(MinShrinkScale, 1f, Mathf.Clamp01(flat.magnitude / near));
+    }
+
+    private static void SetPillar(int index, Vector3 basePos, Color color, float scale)
     {
         var lr = GetOrCreate(index);
         if (lr == null) return;
 
-        lr.startWidth = WidthBottom;
-        lr.endWidth = WidthTop;
+        var h = Cfg.DebugOverlayHeight * scale;
+        var wBottom = Cfg.DebugOverlayWidth * scale;
+
+        lr.positionCount = 2;
+        lr.startWidth = wBottom;
+        lr.endWidth = wBottom * TopWidthRatio;
         lr.startColor = color;
         lr.endColor = new Color(color.r, color.g, color.b, 0f); // 先端をαフェード
         lr.SetPosition(0, basePos);
-        lr.SetPosition(1, basePos + Vector3.up * PillarHeight);
+        lr.SetPosition(1, basePos + Vector3.up * h);
         lr.gameObject.SetActive(true);
+    }
+
+    private static void SetPathLine(Vector3[] wps, float scale)
+    {
+        var lr = GetOrCreateSingle(ref _pathLine, "CAIV_DbgPathLine");
+        if (lr == null) return;
+
+        lr.positionCount = wps.Length;
+        for (var i = 0; i < wps.Length; i++)
+            lr.SetPosition(i, wps[i] + Vector3.up * PathLineLift);
+
+        var w = PathLineWidth * scale;
+        lr.startWidth = w;
+        lr.endWidth = w;
+        lr.startColor = CPathLine;
+        lr.endColor = CPathLine;
+        lr.gameObject.SetActive(true);
+    }
+
+    private static void HidePathLine()
+    {
+        if (_pathLine != null) _pathLine.gameObject.SetActive(false);
     }
 
     private static LineRenderer GetOrCreate(int index)
     {
         while (Pool.Count <= index) Pool.Add(null);
+        if (Pool[index] != null) return Pool[index]; // fake-null なら下で再生成
 
-        var lr = Pool[index];
-        if (lr != null) return lr; // fake-null（ワールド再ロードで破棄）なら再生成へ
+        var lr = NewLineRenderer("CAIV_DbgPillar_" + index);
+        Pool[index] = lr;
+        return lr;
+    }
 
+    private static LineRenderer GetOrCreateSingle(ref LineRenderer field, string name)
+    {
+        if (field != null) return field;
+        field = NewLineRenderer(name);
+        return field;
+    }
+
+    private static LineRenderer NewLineRenderer(string name)
+    {
         EnsureMaterial();
         if (_mat == null) return null; // シェーダ未取得（想定外）: 落とさず描画スキップ
 
-        var go = new GameObject("CAIV_DbgPillar_" + index);
-        lr = go.AddComponent<LineRenderer>();
+        var go = new GameObject(name);
+        var lr = go.AddComponent<LineRenderer>();
         lr.useWorldSpace = true;
         lr.positionCount = 2;
         lr.numCapVertices = 0;
-        lr.alignment = LineAlignment.View; // 常にカメラを向く帯（柱として視認しやすい）
+        lr.alignment = LineAlignment.View; // 常にカメラを向く帯
         lr.material = _mat;
-        Pool[index] = lr;
         return lr;
     }
 

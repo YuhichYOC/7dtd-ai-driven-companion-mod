@@ -71,7 +71,7 @@ internal static class CompanionExecutor
         // --- デバッグ・オーバーレイ ( 移動目的地の光柱 ) : world / leader 確定直後 ---
         //   真実を読むだけ ( leader.position と PathFollowState の公開配列 )
         //   移動ロジックは複製しない
-        DebugOverlay.Sync(leader);
+        DebugOverlay.Sync(self, leader);
 
         if (Cfg.Enabled)
         {
