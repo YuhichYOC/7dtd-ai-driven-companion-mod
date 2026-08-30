@@ -363,3 +363,79 @@ A* 一式の逆コンパイル実物で確定した。適用スコープはリ�
 2. **送信路（チャットPoC）**: `Vector3[]` を量子化・連番分割で送出、クライアントで受信・表示抑止・再結合。
 3. **クライアント側 追従**: 受信ウェイポイントを `MoveByInput` で辿る。到達判定は `pathFollow()`
    (ASPPathNavigate:91-143、`radius*0.6` 半径・高さ差許容)を写経してホスト想定と挙動を揃える。
+
+## 確定追記（2026-08-19, navigation 一連 実機確定 / ルートA′→送信路→追従）
+
+前追記 N1–N5（クライアント側 vanilla 経路探索は4層で不能）と P1–P6（ホスト側経路生成→クライアント
+追従の成立/ルートA′）を、3スライスに分けて実機検証で確定した。適用スコープはリーダー中心・追従
+グリッド内（1拠点/POI＋隣接1棟）・ゾンビ相当移動に限定（前追記どおり）。file:line は 3.1.0 逆コンパイル実物。
+
+### Q1 スライス1: ホスト側 発注＋抽出（実機確定）
+- コンパニオン(remote EntityPlayer)に navigator を遅延1回付与し、zombie と同一の
+  FindPath/GetPath サイクルで経路を取得・抽出できることを確認。
+    - 付与: `companion.navigator = AstarManager.CreateNavigator(companion)`（AstarManager:197 / navigator は public EntityAlive:704）
+    - 発注: `PathFinderThread.Instance.FindPath(companion, target, speed, canBreak:false, aiTask:null)`（AStarPathFinderThread:111）
+    - 引取: `GetPath(entityId)`（:124）/ 進行中判定 `IsCalculatingPath`（:103）
+    - 探索本体は `pathInfo.entity.navigator.GetPathTo`（:80）経由 ＝ navigator 付与が前提（前追記 P2）
+- **実測**: `path OK pts=5 endGap=0.0m` 83連続、`path FAIL`/例外ゼロ。**aiTask=null は問題なし**（worker例外なし）。
+- 抽出は `PathEntity.points[].projectedLocation`（public・ワールド座標 前追記 P5）→ `Vector3[]`。
+  同tickコピー→`PathEntity.Destruct()` でプール返却（前追記 P6）。
+
+### Q2 スライス1.5: 状態レイヤー endGap 分類＋スタックタイマー（実機確定）
+- 部分経路を「捨てない・到達と同一視しない・状態信号にする」。判定は endGap の絶対値でなく
+  「縮んでいるか」。基準線は接近エピソードの最小 endGap(_bestEndGap)、上振れノイズで誤リセットしない。
+    - `REACHED`     : endGap ≤ ε(1.5m)。終端がリーダーに到達＝完全経路。
+    - `APPROACHING` : endGap > ε だが有意短縮中（部分経路を辿って自己修復中）。辿ってよい。
+    - `STUCK`       : endGap > ε かつ StuckSec(3s) 縮まない。局所最小/追いつけない/袋小路。要エスカレーション。
+- **到達境界の実測**: 完全到達(endGap=0)は straight **≈36m まで**。約41m から endGap 増加(部分経路)、
+  60m で発注ゲート(`MaxCompanionDist`)。→ グリッド76m四方＝コンパニオン中心 半径≈38m とピタリ整合。
+- **設計判断**: `MaxCompanionDist` はあえて 60m のまま緩く保つ（40〜59m の部分経路を辿る自己修復帯域を
+  殺さないため）。安全弁は endGap 分類＋スタックタイマー側に持たせる。
+- **実測**: `APPROACHING`→`sinceProg` 3s 超で `STUCK` 遷移、有意接近で `sinceProg` リセット→`REACHED` を確認。
+
+### Q3 スライス2: 送信路（チャット, 実機確定・無損失）
+- 送信 `GameManager.ChatMessageServer(..., recipientEntityIds=[companion], ...)`（GameManager:4470）:
+    - 4481 で自機 ChatMessageClient を呼ぶが受信者チェックでリーダーは対象外 → **ホスト非表示**。
+    - recipient の client にだけ NetPackageChat 送出 → **他プレイヤーに届かない**。IsServer ガード内（:4472）。
+- 受信 client 側 `NetPackageChat.ProcessPackage`（NetPackageChat:72）→ `ChatMessageClient`（:82 / GameManager:4512）。
+    - ここを **ChatMessageClient の prefix で横取り**し `AddMessage` 前に抑止（return false）。
+      → テキストフィルタ/bbcode を通らず**ペイロード文字種は自由**。
+    - prefix が false でも呼び元 ChatMessageServer の recipient 送出（4496-4504）には影響しない。
+- ワイヤ形式: `~CAIP~|msgId|seq|total|status|n|ax,ay,az|payload`。payload=各点 "dx,dy,dz"(cm整数, anchor相対)を ';' 連結。
+  点境界でチャンク分割し連番再結合。anchor=送信時コンパニオン位置(cm)。復元=絶対点=(a+d)/100 [m]。
+- **実測**: 受信 105/105 `OK`、malformed/dropped/例外ゼロ。多chunk(chunks=2, 32〜38点)も無損失。
+  msgId=27 で start/end が送受一致。status(REACHED/APPROACHING/STUCK)も転送を通過。
+  ゲーム画面にペイロード非表示を目視確認（ターゲティング＋抑止が成立）。
+- 注: `EChatType.Global` / `EMessageSender.None` は表示側の値（抑止するため機能に無影響）で実機通過。
+
+### Q4 スライス3: クライアント追従を既存F8ドライバへ組み込み（実機確定）
+- 受信経路(OK のみ)を `PathFollowState.SetPath` へ渡し、`CompanionExecutor` の follow posture が
+  `TryGetMoveTarget` で現在ウェイポイントを取得 → `Steer(moveTarget=WP,...)`。到達で次点へ。
+    - **standoff 停止判定は従来どおり「リーダーまでの距離」**（近づけば停止）。経路は途中の向かう先だけ差し替え。
+    - 戦闘 facing は不変（脅威優先）。非戦闘の追従中のみ進行方向を向く。
+    - 経路が無い/古い(PathStaleSec)/消化済み → `TryGetMoveTarget` false → **既存の直線追従へ自然フォールバック**。
+    - 到達判定は水平半径(WaypointArriveM)＋高さ許容(WaypointHeightTolM)。ASPPathNavigate.pathFollow(:91-143)に倣う。
+    - 新経路到着時は最近傍WPへ index 再シードし後戻り最小化。
+- **実測(2回)**: POI迂回で回り込み／standoff内で停止／F10 有効=プール回避・無効=直進落下／
+  F10無効化 数秒後に直進復帰（フォールバック）。追従×戦闘の共存もOK。
+
+### Q5 保留（engage-maneuver で対応。移動実行レイヤーの課題）
+- **ドアで停止**: 発注は `canBreak=false`、かつ追従側はブロック破壊もドア開閉もしない。zombie は canBreak=true で
+  障害を壊して進むが、追従はドアで止まる。→ 破壊実行 / ドア開閉 / STUCK→再ルート のいずれか。
+- **段差ジャンプ不可**: `Steer`/`Stop` が `movementInput.jump=false` 固定で段差検出＋ジャンプ発火を持たない。
+  → 次WPとの高さ差でジャンプをパルス。
+- いずれも「経路は正しいが移動実行が足りない」型 ＝ engage-maneuver（後退・間合い・回り込み）と同じローカル
+  移動実行の領分。そこでまとめて扱う。
+
+### 実装ファイル対応（v0.7 系）
+- ホスト: `HostPathProbe.cs`（F10・MoveByInput prefix・navigator付与/FindPath/GetPath/抽出/endGap分類/送信呼び出し）
+- 共有: `PathWire.cs`（エンコード/チャンク・ChatMessageServer 送信・受信再結合）、`PathFollowState.cs`（追従ステート）
+- クライアント: `PathRx.cs`（ChatMessageClient prefix 抑止＋供給）
+- 既存改修: `CompanionExecutor.cs`(follow-else に経路追従)、`Cfg.cs`/`ModCfgFile.cs`/`companion_config.txt`(PathFollow系4項目)
+- 入力知見: フックは `MoveByInput` 系でないと `GetKeyDown` のエッジを取りこぼす／ゲームのキーバインドは
+  `Input.GetKeyDown` の生読みを妨げない（F8=FPS表示の前例）／F9はスクショ割当のため回避しF10採用。
+
+### 「取得不能 → 補完候補」表 追補（前追記 P の該当行を確定へ更新）
+| 情報 | 状況 | 実装状況 | 備考 |
+|---|---|---|---|
+| コンパニオンの経路探索＋追従 | クライアント直接は不能(N1–N5) | **実機確定**: ホスト計算(ルートA′)→チャット無損失転送→クライアントWP追従 | スコープ=グリッド76m内・ゾンビ相当。範囲外/STUCKは安全側フォールバック。ドア破壊・ジャンプは engage-maneuver で追加 |

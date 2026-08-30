@@ -19,6 +19,7 @@
 *
 */
 
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CompanionAIVerify
@@ -27,6 +28,7 @@ namespace CompanionAIVerify
     internal static class CombatDriver
     {
         private static bool               _attackPressed;      // 近接: press 中フラグ
+        private static bool               _aimAssistSet;       // v0.8(B)-A: SetAttackTarget を張ったか（解除用）
         private static float              _nextEngageLogTime;
         private static bool               _fpvLogged;
         private static bool               _lastFpv;
@@ -56,6 +58,8 @@ namespace CompanionAIVerify
             float reach = GetAttackReach(self);
             float d     = Mathf.Sqrt(threat.DistSq);
 
+            EngageRange.LogTick(self, threat.Target);
+
             // ★ v0.7(A): 交戦距離に応じた武器自動切替。切替した frame は settle のため即 return。
             WeaponSelector.RefreshLoadout(self, force: false);
             if (Cfg.AutoWeaponSwitch && WeaponSelector.MaybeSwitch(self, d)) return;
@@ -84,6 +88,23 @@ namespace CompanionAIVerify
             // ★ (2) 近接交戦: 3Dエイム（ピッチ込み）→ press 駆動スイング
             FaceTarget3D(self, threat.Target);
 
+            // ★ v0.8(B)-A: 近接レイをターゲットのチェストへ自動補正させる。
+            //   ItemActionDynamic.GetExecuteActionTarget は attackTarget!=null のとき
+            //   ray を getChestPosition() 方向へ差し替える（ItemActionDynamic:327-330）。
+            //   これで FaceTarget3D の平面精度に依存せず命中が安定する。
+            //
+            //   ※ client では SetAttackTarget() を使えない：内部で world.entityDistributer.SendPacket を叩くが
+            //     entityDistributer は IsServer 時のみ生成される（World:468-477）ため client では null → NRE。
+            //     さらに attackTargetTime>0 にすると自動失効パス(EntityAlive:3367-3376)も同じ null を踏む。
+            //     → public フィールドへ直接代入し、attackTargetTime は 0 のまま（失効パスに入らせない）。
+            //       解除は ReleaseIfPressed で直接 null 代入。redirect は attackTarget を読むだけ(GetAttackTarget:5890)なので十分。
+            //       ダメージ同期は Attack()→DamageEntity()→NetPackageDamageEntity 経由で別途成立（attackTarget 非依存）。
+            if (Cfg.MeleeAimAssist)
+            {
+                self.attackTarget = threat.Target; // EntityAlive:716 (public field) — client-safe
+                _aimAssistSet = true;
+            }
+
             if (self.Attack(false)) // press。ケイデンスは canStartAttack の APM 律速が制御
             {
                 _attackPressed = true;
@@ -101,6 +122,14 @@ namespace CompanionAIVerify
             {
                 self.Attack(true); // release（スイングの後始末）
                 _attackPressed = false;
+            }
+            // v0.8(B)-A: 張っていた aim-assist の attackTarget を解除。
+            //   client では SetAttackTarget(null,0) も entityDistributer.SendPacket(EntityAlive:5932)で NRE になるため
+            //   フィールドを直接 null 代入する。attackTargetTime は元々 0 のまま＝失効パス(3367-)にも入らない。
+            if (_aimAssistSet)
+            {
+                self.attackTarget = null; // client-safe な直接解除
+                _aimAssistSet = false;
             }
         }
 
@@ -154,9 +183,25 @@ namespace CompanionAIVerify
                 return;
             }
 
-            if (d > Cfg.RangedMaxEngageMeters)
+            // ★ v0.8(C): 射程ゲート。グローバル上限(RangedMaxEngageMeters)に加え、
+            //   武器固有の実効射程でも「弾が届かない距離」を弾く。fireMax = min(グローバル上限, 実効射程×安全係数)。
+            //   実効射程 = EngageRange.Read().range（ranged では GetRange()＝MaxRange 適用後の発射射程, ItemActionRanged:1376）。
+            //   Slice A 実測で shotgun range≈10 なのに d≈20 で撃って弾が届かない問題を解消する。
+            //   d は feet-to-feet、実際の弾は camera→aimPoint なので安全係数(既定0.85)で余裕を持たせる。
+            float fireMax = Cfg.RangedMaxEngageMeters;
+            EngageRange.Info erC = EngageRange.Read(self);
+            if (erC.valid && erC.isRanged && erC.range > 0.01f)
+                fireMax = Mathf.Min(fireMax, erC.range * Cfg.RangedRangeSafety);
+
+            if (d > fireMax)
             {
                 ReleaseFireIfPressed(self);
+                if (Time.time >= _nextHoldLogTime)
+                {
+                    _nextHoldLogTime = Time.time + Cfg.LogThrottleSec;
+                    Log.Out($"[CompanionAI] hold: {threat.Kind} id={threat.Target.entityId} d={d:0.0}m > fireMax={fireMax:0.0}m " +
+                            $"(range={erC.range:0.0} x{Cfg.RangedRangeSafety:0.00}, cap={Cfg.RangedMaxEngageMeters:0.0})");
+                }
                 return;
             }
 
@@ -196,6 +241,22 @@ namespace CompanionAIVerify
                 {
                     _nextHoldLogTime = Time.time + Cfg.LogThrottleSec;
                     Log.Out($"[CompanionAI] hold: {threat.Kind} id={tgt.entityId} d={d:0.0}m reason={reason}");
+                }
+                return;
+            }
+
+            // ★ v0.8(D): 友軍射線ガード。実射(fireShot)と同一原点(GetLookRay)＋同一狙点方向で、
+            //   対象より手前の射線帯に友軍（他プレイヤー＋allyドローン）が居れば、狙点が通っていても発砲しない。
+            //   既存の shootable(狙点探索/遮蔽)は「頭が1点通れば撃つ」で緩く、拡散＋原点差で友軍に当たっていた
+            //   （FF漏れ実測）。ここで実射ラインを直接検証して塞ぐ。
+            if (Cfg.FriendlyFireGate &&
+                FriendlyInLineOfFire(self, aimPoint, out int ffBlockerId))
+            {
+                ReleaseFireIfPressed(self);
+                if (Time.time >= _nextHoldLogTime)
+                {
+                    _nextHoldLogTime = Time.time + Cfg.LogThrottleSec;
+                    Log.Out($"[CompanionAI] hold: {threat.Kind} id={tgt.entityId} d={d:0.0}m reason=FF id={ffBlockerId}");
                 }
                 return;
             }
@@ -262,6 +323,59 @@ namespace CompanionAIVerify
             else if (after == 0) { if (_lastMeta != 0) Log.Out("[CompanionAI] fire: empty — waiting for auto-reload."); }
             else if (_lastMeta >= 0 && after > _lastMeta) Log.Out($"[CompanionAI] reload: done, mag={after}");
             _lastMeta = after;
+        }
+
+        // ★ v0.8(D): 友軍射線ガード。
+        //   実射 fireShot は GetLookRay().origin(=目, EntityAlive:5536)から狙点方向へ拡散付きで飛ぶ。
+        //   ここでは同一原点→aimPoint の直線に対し、対象より手前(dist<狙点距離)で友軍のAABB(膨張)に
+        //   交差するものが1体でもあればホールドする。友軍=自分以外の生存プレイヤー＋allyドローン。
+        //   膨張量 FriendlyFireMargin は拡散＋コライダー幅ぶんの余裕（片側マージン）。
+        private static readonly List<EntityAlive> _ffFriendlies = new List<EntityAlive>();
+
+        private static bool FriendlyInLineOfFire(EntityPlayerLocal self, Vector3 aimPoint, out int blockerId)
+        {
+            blockerId = -1;
+            World world = self.world;
+            if (world == null) return false;
+
+            Vector3 origin = self.GetLookRay().origin;          // 実射と同一原点
+            Vector3 dir    = aimPoint - origin;
+            float   dlen   = dir.magnitude;                     // 対象狙点までの距離（この手前だけ問題）
+            if (dlen < 1e-4f) return false;
+            Ray shotRay = new Ray(origin, dir / dlen);
+            float margin = Cfg.FriendlyFireMargin;
+
+            // --- 友軍集合を集める ---
+            _ffFriendlies.Clear();
+            var players = world.GetPlayers();                   // リモートのリーダーも含む（FindNearestLeader と同経路）
+            if (players != null)
+                for (int i = 0; i < players.Count; i++)
+                {
+                    EntityPlayer p = players[i];
+                    if (p != null && p != self && !p.IsDead()) _ffFriendlies.Add(p);
+                }
+            EntityPlayer selfP = self as EntityPlayer;
+            var ents = world.Entities != null ? world.Entities.list : null;
+            if (ents != null)
+                for (int i = 0; i < ents.Count; i++)
+                {
+                    // allyドローンのみ友軍に含める（fireShot:1449 と同じ isAlly 判定）
+                    if (ents[i] is EntityDrone drone && !drone.IsDead() && drone.isAlly(selfP))
+                        _ffFriendlies.Add(drone);
+                }
+
+            // --- 射線帯の交差判定 ---
+            for (int i = 0; i < _ffFriendlies.Count; i++)
+            {
+                Bounds b = _ffFriendlies[i].boundingBox;        // world AABB (Entity.boundingBox)
+                b.Expand(margin * 2f);                          // Expand は総量増加＝片側 margin
+                if (b.IntersectRay(shotRay, out float dist) && dist > 0f && dist < dlen)
+                {
+                    blockerId = _ffFriendlies[i].entityId;
+                    return true;
+                }
+            }
+            return false;
         }
 
         // ★ シュータブル解決: 候補狙点(頭/胴中心/腹)を順に自前レイキャストし、
@@ -347,12 +461,13 @@ namespace CompanionAIVerify
             self.SetRotation(euler);
         }
 
-        // 保持アイテム action[0] の射程。取れなければ素手相当 2.0m。
+        // 保持アイテムの実効リーチ。EngageRange.Read が Dynamic melee(=ItemActionDynamic.Range/RangeDefault)を
+        // 正しく解決する。旧実装は基底 ItemAction.Range を読んでいたため、Dynamic melee のリーチを取れず
+        // 2.4m 武器を 2.0m フォールバック扱いしていた（実ログで range=2.4 と確認済み）。取れなければ 2.0m。
         private static float GetAttackReach(EntityPlayerLocal self)
         {
-            var hi = self.inventory != null ? self.inventory.holdingItem : null;
-            var a  = (hi != null && hi.Actions != null && hi.Actions.Length > 0) ? hi.Actions[0] : null;
-            if (a != null && a.Range > 0.01f) return a.Range;
+            EngageRange.Info er = EngageRange.Read(self);
+            if (er.valid && er.range > 0.01f) return er.range;
             return 2.0f;
         }
 
