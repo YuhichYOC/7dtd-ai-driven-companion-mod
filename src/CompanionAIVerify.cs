@@ -3,9 +3,10 @@ using HarmonyLib;
 using UnityEngine;
 
 // =============================================================================
-// Companion AI verify harness — Build v0.5.3 (旧 v0.8)
-//   採番方針: 交戦(engage)スライス系列は v0.5.x。tuning/診断は patch(.1,.2,.3)、
+// Companion AI verify harness — Build v0.5.4 (旧 v0.8 + 設定ファイル外部化)
+//   採番方針: 交戦(engage)スライス系列は v0.5.x。tuning/診断/tooling は patch(.1,.2,.3,.4)、
 //   新capability(engage-maneuver/navigation 等)が入る時のみ minor を上げる。
+//   v0.5.4: 調整値を companion_config.txt に外部化（起動時＆F8で再読込）。挙動は v0.5.3 と同一。
 // -----------------------------------------------------------------------------
 // Companion AI — locomotion + facing + threat-sensing + ENGAGE(melee+ranged)
 // (7DTD 3.1.0)
@@ -120,55 +121,197 @@ namespace CompanionAIVerify
         {
             var harmony = new Harmony("companionai.verify");
             harmony.PatchAll();
-            Log.Out("[CompanionAI] verify harness v0.5.3 loaded (follow + facing + threat-scan + engage[melee+ranged/parallax/ADS]). F8 to toggle drive.");
+            ModCfgFile.Init(_modInstance);   // companion_config.txt を読込（無ければ生成）
+            Log.Out("[CompanionAI] verify harness v0.5.4 loaded (follow + facing + threat-scan + engage[melee+ranged/parallax/ADS] + file-config). F8 to toggle drive / reload config.");
         }
     }
 
-    // --- Tunables ------------------------------------------------------------
+    // --- Tunables (companion_config.txt で上書き可能) --------------------------
     internal static class Cfg
     {
-        internal static bool    Enabled          = false;          // 起動時OFF。F8でトグル
+        internal static bool    Enabled          = false;          // 起動時OFF。F8でトグル(ファイル対象外)
         internal const  KeyCode ToggleKey        = KeyCode.F8;
-        internal const  float   StandoffMeters   = 3.0f;           // これ以内なら停止
-        internal const  float   RunMeters        = 8.0f;           // これ以上離れたら走る
+        internal static float   StandoffMeters   = 3.0f;           // これ以内なら停止
+        internal static float   RunMeters        = 8.0f;           // これ以上離れたら走る
 
-        internal const  float   ThreatScanRadius = 20.0f;          // 脅威走査半径(m)
+        internal static float   ThreatScanRadius = 20.0f;          // 脅威走査半径(m)
         internal static bool    CombatMode       = true;           // true=脅威を向く/叩く
-        internal const  float   LogThrottleSec   = 0.5f;           // 検知/交戦ログの最小間隔
+        internal static float   LogThrottleSec   = 0.5f;           // 検知/交戦ログの最小間隔
 
         // --- 交戦スライス（近接, ver0.3） ---
-        internal const  float   ReachBuffer      = 0.5f;           // 近接射程判定の余裕(m)
-        // ★ まずは実ログで bFirstPersonView の実値を「観測」する。
-        //   観測して false と分かったら、下を true にして spawn 経路の誤設定を自己修復する。
+        internal static float   ReachBuffer      = 0.5f;           // 近接射程判定の余裕(m)
+        // ★ 実ログで bFirstPersonView の実値を観測。false と分かれば true で spawn 誤設定を自己修復。
         internal static bool    ForceFirstPerson = false;
 
         // --- 発砲スライス（遠距離, ver0.4） ---
         internal static bool    EnableRangedFire     = true;       // false で従来の deferred ログのみ
-        internal const  float   RangedMaxEngageMeters= 18.0f;      // これ以内の脅威にのみ発砲(m)
-        internal const  float   RangedFireIntervalSec= 0.4f;       // 発砲ケイデンス(≒2.5発/秒)。個々の弾が見える程度に抑制
+        internal static float   RangedMaxEngageMeters= 18.0f;      // これ以内の脅威にのみ発砲(m)
+        internal static float   RangedFireIntervalSec= 0.4f;       // 発砲ケイデンス(≒2.5発/秒)
 
         // --- ハイブリッド狙点（ver0.5） ---
-        //   ログ実測: 命中は headLift≈1.5-2.0、非命中は≈0-0.7 で分離。
-        //   頭が十分高い時のみ頭を狙い、低姿勢(四足/突進/のけぞり)は AABB 縦中心へ落とす。
-        internal const  float   HeadAimMinLift       = 1.2f;       // これ以上なら頭狙い、未満は胴中心。要調整
+        //   実測: 命中は headLift≈1.5-2.0、非命中は≈0-0.7 で分離。
+        internal static float   HeadAimMinLift       = 1.2f;       // これ以上なら頭狙い、未満は胴中心
 
         // --- カメラ配達ラグ対策（ver0.6）＋視差補正（ver0.7） ---
-        //   弾は GetLookRay()=playerCamera.transform 由来。SetRotation はカメラを Angle 経由で
-        //   遅延反映するため、同フレーム発砲では前フレームのカメラ向きで撃ってしまう(=配達ラグ)。
-        //   ON にすると発砲直前に playerCamera.transform を狙点へ即時スナップしてラグを消す。
-        //   ver0.7: スナップ方向を「カメラ実位置(=弾の原点)→狙点」で計算し視差を除去。
-        //   実測で配達ラグ解消が確認できたため既定 true。
+        //   発砲直前に playerCamera.transform を狙点へ即時スナップし、配達ラグ＋視差を解消。
         internal static bool    SnapCameraOnFire     = true;
 
         // --- 視差A/B用トグル（v0.5.3） ---
-        //   true = カメラ実位置基準（視差補正あり, 既定） / false = 頭ボーン基準（補正なし・旧挙動）。
-        //   ADS を off にして本トグルだけ A/B すると、視差の hit% 寄与が missDist の差として出る。
+        //   true=カメラ実位置基準（補正あり） / false=頭ボーン基準（補正なし・旧挙動）。
         internal static bool    AimFromCameraOrigin  = true;
 
         // --- ADS（サイトを覗く射撃, ver0.8） ---
         //   AimingGun=true で拡散が hip(1.0)→aiming(0.1) と10倍縮む(ItemActionRanged:1346, 748)。
-        //   視差(v0.7で解消)とは別軸。狙点の周りの散布界を絞る。secondary action を持つ銃のみ。
         internal static bool    AimDownSightsOnEngage = true;
+    }
+
+    // --- 外部設定ファイル (companion_config.txt) -------------------------------
+    //   Mod フォルダの key=value テキストを起動時＆F8切替時に読込。無ければ既定でテンプレ生成。
+    //   bool: true/false/1/0/on/off、float: '.' 区切り(InvariantCulture)。未知キーは警告して無視。
+    internal static class ModCfgFile
+    {
+        private static string _path;
+
+        internal static void Init(Mod mod)
+        {
+            try
+            {
+                string dir = (mod != null) ? mod.Path : null;   // 3.1.0 で異なる場合は要確認
+                if (string.IsNullOrEmpty(dir))
+                {
+                    Log.Warning("[CompanionAI] mod path unknown; config disabled, using defaults.");
+                    return;
+                }
+                _path = System.IO.Path.Combine(dir, "companion_config.txt");
+                if (!System.IO.File.Exists(_path))
+                {
+                    try
+                    {
+                        System.IO.File.WriteAllText(_path, DefaultText());
+                        Log.Out("[CompanionAI] wrote default config: " + _path);
+                    }
+                    catch (System.Exception e)
+                    {
+                        Log.Warning("[CompanionAI] could not write default config: " + e.Message);
+                    }
+                }
+                Load();
+            }
+            catch (System.Exception e)
+            {
+                Log.Warning("[CompanionAI] config init failed: " + e.Message + " (using defaults)");
+            }
+        }
+
+        internal static void Reload()
+        {
+            if (string.IsNullOrEmpty(_path)) return;
+            try { Load(); }
+            catch (System.Exception e) { Log.Warning("[CompanionAI] config reload failed: " + e.Message); }
+        }
+
+        private static void Load()
+        {
+            if (_path == null || !System.IO.File.Exists(_path))
+            {
+                Log.Out("[CompanionAI] config not found, using defaults.");
+                return;
+            }
+            int applied = 0;
+            foreach (string raw in System.IO.File.ReadAllLines(_path))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0 || line[0] == '#') continue;
+                int eq = line.IndexOf('=');
+                if (eq <= 0) continue;
+                string key = line.Substring(0, eq).Trim();
+                string val = line.Substring(eq + 1).Trim();
+                if (Apply(key, val)) applied++;
+                else Log.Warning("[CompanionAI] config: unknown/invalid '" + key + "' = '" + val + "'");
+            }
+            Log.Out(string.Format(
+                "[CompanionAI] config loaded ({0} keys): Combat={1} Ranged={2} Snap={3} AimFromCam={4} ADS={5} ForceFPV={6} | Standoff={7} Run={8} ScanR={9} HeadLift={10} MaxEngage={11} FireInt={12} ReachBuf={13} LogThr={14}",
+                applied, Cfg.CombatMode, Cfg.EnableRangedFire, Cfg.SnapCameraOnFire, Cfg.AimFromCameraOrigin,
+                Cfg.AimDownSightsOnEngage, Cfg.ForceFirstPerson, Cfg.StandoffMeters, Cfg.RunMeters,
+                Cfg.ThreatScanRadius, Cfg.HeadAimMinLift, Cfg.RangedMaxEngageMeters, Cfg.RangedFireIntervalSec,
+                Cfg.ReachBuffer, Cfg.LogThrottleSec));
+        }
+
+        private static bool Apply(string key, string val)
+        {
+            switch (key)
+            {
+                case "CombatMode":            return TryBool(val, ref Cfg.CombatMode);
+                case "EnableRangedFire":      return TryBool(val, ref Cfg.EnableRangedFire);
+                case "ForceFirstPerson":      return TryBool(val, ref Cfg.ForceFirstPerson);
+                case "SnapCameraOnFire":      return TryBool(val, ref Cfg.SnapCameraOnFire);
+                case "AimFromCameraOrigin":   return TryBool(val, ref Cfg.AimFromCameraOrigin);
+                case "AimDownSightsOnEngage": return TryBool(val, ref Cfg.AimDownSightsOnEngage);
+                case "StandoffMeters":        return TryF(val, ref Cfg.StandoffMeters);
+                case "RunMeters":             return TryF(val, ref Cfg.RunMeters);
+                case "ThreatScanRadius":      return TryF(val, ref Cfg.ThreatScanRadius);
+                case "LogThrottleSec":        return TryF(val, ref Cfg.LogThrottleSec);
+                case "ReachBuffer":           return TryF(val, ref Cfg.ReachBuffer);
+                case "HeadAimMinLift":        return TryF(val, ref Cfg.HeadAimMinLift);
+                case "RangedMaxEngageMeters": return TryF(val, ref Cfg.RangedMaxEngageMeters);
+                case "RangedFireIntervalSec": return TryF(val, ref Cfg.RangedFireIntervalSec);
+                default: return false;
+            }
+        }
+
+        private static bool TryBool(string s, ref bool dst)
+        {
+            switch (s.ToLowerInvariant())
+            {
+                case "true": case "1": case "on":  case "yes": dst = true;  return true;
+                case "false":case "0": case "off": case "no":  dst = false; return true;
+                default: return false;
+            }
+        }
+
+        private static bool TryF(string s, ref float dst)
+        {
+            if (float.TryParse(s, System.Globalization.NumberStyles.Float,
+                               System.Globalization.CultureInfo.InvariantCulture, out float v))
+            { dst = v; return true; }
+            return false;
+        }
+
+        private static string DefaultText()
+        {
+            return
+"# CompanionAI verify harness config (v0.5.4)\n" +
+"# 変更後、ゲーム内で F8（ドライブ切替）を押すと再読込されます。起動時にも読込。\n" +
+"# bool = true/false (1/0/on/off も可) , float = 小数点は '.'（例 3.0）\n" +
+"\n" +
+"# --- 交戦の基本 ---\n" +
+"CombatMode            = true\n" +
+"EnableRangedFire      = true\n" +
+"\n" +
+"# --- 追従 ---\n" +
+"StandoffMeters        = 3.0\n" +
+"RunMeters             = 8.0\n" +
+"\n" +
+"# --- 脅威検知 ---\n" +
+"ThreatScanRadius      = 20.0\n" +
+"LogThrottleSec        = 0.5\n" +
+"\n" +
+"# --- 近接 ---\n" +
+"ReachBuffer           = 0.5\n" +
+"\n" +
+"# --- 狙点（頭/胴の切替しきい値, m）---\n" +
+"HeadAimMinLift        = 1.2\n" +
+"\n" +
+"# --- 発砲 ---\n" +
+"RangedMaxEngageMeters = 18.0\n" +
+"RangedFireIntervalSec = 0.4\n" +
+"\n" +
+"# --- カメラ/視差/ADS（A/B対象）---\n" +
+"ForceFirstPerson      = false\n" +
+"SnapCameraOnFire      = true\n" +
+"AimFromCameraOrigin   = true\n" +
+"AimDownSightsOnEngage = true\n";
+        }
     }
 
     // --- Threat sensing ------------------------------------------------------
@@ -363,7 +506,7 @@ namespace CompanionAIVerify
             var hi  = inv != null ? inv.holdingItem : null;
             var hid = inv != null ? inv.holdingItemData : null;
             return hi != null && hi.Actions != null && hi.Actions.Length >= 2 && hi.Actions[1] != null
-                && hid != null && hid.actionData != null && hid.actionData.Length >= 2;
+                && hid != null && hid.actionData != null && hid.actionData.Count >= 2; // hid.actionData には Length がない・Count を使う
         }
 
         // ★ 発砲ドライバ。press(フレームN)→release(フレームN+1) を FireInterval ごとに回す。
@@ -556,6 +699,7 @@ namespace CompanionAIVerify
         {
             if (Input.GetKeyDown(Cfg.ToggleKey))
             {
+                ModCfgFile.Reload();   // 編集した companion_config.txt を即反映
                 Cfg.Enabled = !Cfg.Enabled;
                 Log.Out("[CompanionAI] drive = " + Cfg.Enabled);
                 if (!Cfg.Enabled) { CombatDriver.ReleaseIfPressed(self); CombatDriver.ReleaseFireIfPressed(self); Stop(self); }
