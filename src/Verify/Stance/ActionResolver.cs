@@ -72,7 +72,7 @@ internal class ActionResolver
             HeldKinds.None => Actions.None,
             HeldKinds.Bow => Actions.Draw01,
             HeldKinds.Melee => Actions.Melee01,
-            HeldKinds.Crossbow => Actions.Trigger01,
+            HeldKinds.Launcher => Actions.Launcher01,
             HeldKinds.Gun => Actions.Trigger01,
             _ => Actions.None
         };
@@ -87,16 +87,12 @@ internal class ActionResolver
         var a = hi.Actions[0];
         return a switch
         {
-            ItemActionCatapult => IsCrossbow(hi) ? HeldKinds.Crossbow : HeldKinds.Bow,
-            ItemActionRanged => IsCrossbow(hi) ? HeldKinds.Crossbow : HeldKinds.Gun,
+            ItemActionCatapult => HeldKinds.Bow,
+            ItemActionLauncher => HeldKinds.Launcher,
+            ItemActionRanged => HeldKinds.Gun,
             ItemActionMelee or ItemActionDynamicMelee => HeldKinds.Melee,
             _ => HeldKinds.None
         };
-    }
-
-    private bool IsCrossbow(ItemClass ic)
-    {
-        return (ic.Name ?? string.Empty).IndexOf("crossbow", StringComparison.Ordinal) >= 0;
     }
 
     internal enum Actions
@@ -104,6 +100,7 @@ internal class ActionResolver
         None,
         Draw01,
         Melee01,
+        Launcher01,
         Trigger01
     }
 
@@ -112,7 +109,7 @@ internal class ActionResolver
         None,
         Bow,
         Melee,
-        Crossbow,
+        Launcher,
         Gun
     }
 }

@@ -48,4 +48,16 @@ internal class AdsOperation
         AdsOn = on;
         _i.Self.AimingGun = on; // 拡散 hip ( 1.0 ) <-> aiming ( 0.1 ) を切替 ( ItemActionRanged : 748, 1346 )
     }
+
+    // ItemActionLauncher ( クロスボウ・ロケットランチャー ), LauncherPatternXX 専用
+    // 内容が Run とほぼ同じ, Run への副作用を防止するため分けて実装している
+    // Run へ渡すフラグにより分岐を増やすか考え中
+    internal void RunLauncher(bool on)
+    {
+        if (on && !Cfg.AimDownSightsOnEngage) on = false;
+        if (on && !_i.AdsActionValidator.CanUseLauncherAds()) on = false;
+        if (on == AdsOn) return;
+        AdsOn = on;
+        _i.Self.AimingGun = on; // 拡散 hip ( 1.0 ) <-> aiming ( 0.1 ) を切替 ( ItemActionRanged : 748, 1346 )
+    }
 }
