@@ -1,0 +1,93 @@
+# CompanionAI verify harness config (v0.8.1)
+# 変更後、ゲーム内で F8（ドライブ切替）を押すと再読込されます。起動時にも読込。
+# bool = true/false (1/0/on/off も可) , float = 小数点は '.'（例 3.0）
+
+# --- 交戦の基本 ---
+CombatMode                 = true
+EnableRangedFire           = true
+
+# --- 追従 ---
+StandoffMeters             = 3.0
+RunMeters                  = 8.0
+
+# --- 経路追従（navigation スライス3）---
+PathFollow                 = true
+WaypointArriveM            = 1.0
+WaypointHeightTolM         = 1.5
+PathStaleSec               = 3.0
+
+# --- 障害物ジャンプ（v0.8.1）---
+# 前進中に前方が詰まり、前方セルが1ブロック段差（脛にブロック/頭は空）ならジャンプで乗り越える。
+# 2ブロック以上の壁はジャンプしない。ProbeAhead は段差セルを見に行く前方距離(m)。
+JumpObstacles              = true
+JumpProbeAhead             = 0.6
+
+# --- 脅威検知 ---
+ThreatScanRadius           = 20.0
+LogThrottleSec             = 0.5
+
+# --- 近接 ---
+ReachBuffer                = 0.5
+
+# --- 狙点（頭/胴の切替しきい値, m）---
+HeadAimMinLift             = 1.2
+
+# --- 発砲 ---
+RangedMaxEngageMeters      = 18.0
+# 武器の実効射程×この係数までしか撃たない（弾が届かない距離での空撃ち防止）
+RangedRangeSafety          = 0.85
+# 射線帯に友軍(他プレイヤー+allyドローン)が居れば発砲しない。Margin は友軍AABBの片側膨張(m)
+FriendlyFireGate           = true
+FriendlyFireMargin         = 0.4
+RangedFireIntervalSec      = 0.4
+
+# --- 弓/クロスボウ引き絞り（ItemActionCatapult, v0.8.1）---
+# press でチャージ開始→フルドロー(m_MaxStrainTime)×Fraction まで引く→release で発射。
+# false にすると弓を撃たない（ドローなしでは矢が飛ばないためホールド）。
+BowChargeEnabled           = true
+# フルドローの何割まで引くか。strain は Clamp01 されないため 1.0 未満でオーバーチャージ回避（0.90-0.98 推奨）
+BowDrawFraction            = 0.95
+
+# --- カメラ/視差/ADS（A/B対象）---
+ForceFirstPerson           = false
+SnapCameraOnFire           = true
+AimFromCameraOrigin        = true
+AimDownSightsOnEngage      = true
+
+# --- hit検証ゲート / フルオート（v0.6.0）---
+RequireShootable           = true
+FullAutoHold               = true
+
+# --- 武器自動切替（v0.7(A)）---
+AutoWeaponSwitch           = true
+SwitchToMeleeMeters        = 3.5
+SwitchToRangedMeters       = 5.5
+WeaponSwitchMinIntervalSec = 0.6
+LoadoutScanIntervalSec     = 1.0
+
+# --- ツールベルト優先配置（v0.7(B)）---
+AutoStowWeaponsToToolbelt  = true
+ToolbeltStowIntervalSec    = 5.0
+StowDynamicMelee           = true
+
+# --- リーダー落下物拾得（v0.7(C)）---
+AutoPickupLeaderDrops      = true
+PickupRadius               = 6.0
+PickupScanIntervalSec      = 0.5
+PickupUnowned              = false
+
+# --- 交戦マニューバ（v0.8.0） ---
+LogEngageRange             = true
+EngageLogMinInterval       = 0.5
+# 格闘オートアプローチ: リーチ外の交戦中脅威が MaxDistance 内なら自動接近
+MeleeAutoApproach          = true
+MeleeApproachMaxDistance   = 6.0
+# 接近の停止距離をリーチより内側へ(reach-StepIn)。リーチ端張り付きの空振り対策。大きいほど踏み込む
+MeleeApproachStepIn        = 0.7
+# 照準補正(A): SetAttackTarget で近接レイをチェストへ自動補正
+MeleeAimAssist             = true
+MeleeAimAssistHoldTicks    = 30
+# テスト用: ゾンビの標的をリーダーに固定（単独交戦で間合いを観察する用・通常は false）
+DebugPinTargetToLeader     = false
+# テスト用: 敵対をその場に固定（approachMax 検証で静止した交戦中ゾンビを置く用・通常は false）
+DebugFreezeHostiles        = false

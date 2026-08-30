@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <AssemblyName>YourCompanionMod</AssemblyName>
+        <LangVersion>latest</LangVersion>
+        <!-- ゲームのDLLを丸ごと出力にコピーしない -->
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <Nullable>disable</Nullable>
+        <NoWarn>$(NoWarn);MSB3277</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Managed\ 内のゲーム/Harmonyアセンブリを参照。Private=false で出力にコピーしない -->
+        <Reference Include="Assembly-CSharp">
+            <HintPath Condition="Exists('D:\SteamLibrary\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\Assembly-CSharp.dll')">D:\SteamLibrary\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\Assembly-CSharp.dll</HintPath>
+            <HintPath Condition="Exists('../../Assembly-CSharp.dll')">../../Assembly-CSharp.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="LogLibrary">
+            <HintPath Condition="Exists('D:\SteamLibrary\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\LogLibrary.dll')">D:\SteamLibrary\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\LogLibrary.dll</HintPath>
+            <HintPath Condition="Exists('../../LogLibrary.dll')">../../LogLibrary.dll</HintPath>
+            <Aliases>LogLib</Aliases>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="UnityEngine.CoreModule">
+            <HintPath Condition="Exists('D:\SteamLibrary\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\UnityEngine.CoreModule.dll')">D:\SteamLibrary\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+            <HintPath Condition="Exists('../../UnityEngine.CoreModule.dll')">../../UnityEngine.CoreModule.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="UnityEngine.InputLegacyModule">
+            <HintPath Condition="Exists('D:\SteamLibrary\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\UnityEngine.InputLegacyModule.dll')">D:\SteamLibrary\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+            <HintPath Condition="Exists('../../UnityEngine.InputLegacyModule.dll')">../../UnityEngine.InputLegacyModule.dll</HintPath>
+            <Aliases>UnityInputLegacy</Aliases>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="0Harmony">
+            <HintPath Condition="Exists('D:\SteamLibrary\steamapps\common\7 Days To Die\Mods\0_TFP_Harmony\0Harmony.dll')">D:\SteamLibrary\steamapps\common\7 Days To Die\Mods\0_TFP_Harmony\0Harmony.dll</HintPath>
+            <HintPath Condition="Exists('../../0Harmony.dll')">../../0Harmony.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <!-- 必要に応じて SCore.dll なども同様に -->
+
+        <!-- 設定ファイルをビルド先に出力 -->
+        <None Update="companion_config.txt">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+</Project>
