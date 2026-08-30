@@ -61,7 +61,7 @@ internal static class FireOriginWindow
     internal static int Depth;
 }
 
-[HarmonyPatch(typeof(ItemActionRanged), "TryExecuteAction", new[] { typeof(ItemActionData) })]
+[HarmonyPatch(typeof(ItemActionRanged), "TryExecuteAction", typeof(ItemActionData))]
 internal static class Patch_FireOriginWindow
 {
     private static void Prefix()

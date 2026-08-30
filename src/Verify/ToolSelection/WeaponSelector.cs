@@ -36,7 +36,9 @@ internal static class WeaponSelector
     private static int _meleeSlot = -1;
     private static float _nextScan;
     private static float _nextSwitchTime;
-    private static WeaponMode _wantMode = WeaponMode.None;
+
+    internal static bool HasRanged => _rangedSlot >= 0;
+    internal static bool HasMelee => _meleeSlot >= 0;
 
     // 保持中アイテムのモード。分類器で判定（松明等の除外・工具の包含が反映される）。
     internal static WeaponMode CurrentHeldMode(EntityPlayerLocal self)
@@ -76,39 +78,19 @@ internal static class WeaponSelector
         }
     }
 
-    // 距離に応じて希望モードを決め、必要なら持ち替える。切替を発火したら true。
-    //   true を返したフレームは呼び出し側で即 return（settle）。
-    internal static bool MaybeSwitch(EntityPlayerLocal self, float d)
+    // ActionResolver が決めた希望モードへ持ち替える ( 実行のみ )
+    // 実際に切替を発火したら true ( settle 対象 )
+    //   AutoWeaponSwitch OFF / throttle 中 / 既に希望モード保持 / 無効スロット は false
+    //   切替前にトリガー / ドローを安全開放する ( 弓ドロー中の暴発防止 )
+    internal static bool ApplyMode(EntityPlayerLocal self, WeaponMode mode)
     {
+        if (!Cfg.AutoWeaponSwitch || mode == WeaponMode.None) return false;
+
         var inv = self.inventory;
         if (inv == null) return false;
+        if (CurrentHeldMode(self) == mode) return false; // 既に希望モードを保持
 
-        var haveR = _rangedSlot >= 0;
-        var haveM = _meleeSlot >= 0;
-        if (!haveR && !haveM) return false; // 武器なし → 既存 melee 経路へ委譲
-
-        WeaponMode want;
-        if (haveR && haveM)
-        {
-            if (d <= Cfg.SwitchToMeleeMeters) want = WeaponMode.Melee;
-            else if (d >= Cfg.SwitchToRangedMeters) want = WeaponMode.Ranged;
-            else
-                want = _wantMode != WeaponMode.None
-                    ? _wantMode
-                    : d <= (Cfg.SwitchToMeleeMeters + Cfg.SwitchToRangedMeters) * 0.5f
-                        ? WeaponMode.Melee
-                        : WeaponMode.Ranged;
-        }
-        else
-        {
-            want = haveR ? WeaponMode.Ranged : WeaponMode.Melee;
-        }
-
-        _wantMode = want;
-
-        if (CurrentHeldMode(self) == want) return false;
-
-        var slot = want == WeaponMode.Ranged ? _rangedSlot : _meleeSlot;
+        var slot = mode == WeaponMode.Ranged ? _rangedSlot : _meleeSlot;
         if (slot < 0 || slot == inv.holdingItemIdx) return false;
         if (Time.time < _nextSwitchTime) return false;
         _nextSwitchTime = Time.time + Cfg.WeaponSwitchMinIntervalSec;
@@ -116,12 +98,8 @@ internal static class WeaponSelector
         CombatDriver.ReleaseFireIfPressed(self);
         inv.SetHoldingItemIdxNoHolsterTime(slot);
 
-        Logger.LogWeaponSwitch(want switch
-        {
-            WeaponMode.Melee => "MELEE",
-            WeaponMode.Ranged => "RANGED",
-            _ => "NONE"
-        }, slot, d, _rangedSlot, _meleeSlot);
+        Logger.LogWeaponSwitch(mode == WeaponMode.Ranged ? "RANGED" : "MELEE", slot, -1.0f, _rangedSlot,
+            _meleeSlot); // d は ActionResolver 側の判断ログへ移す想定で -1
         return true;
     }
 }

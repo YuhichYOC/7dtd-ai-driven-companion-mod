@@ -38,7 +38,7 @@ internal class AdsActionValidator
     internal bool CanUseAds()
     {
         var inv = _i.Self.inventory;
-        var hi  = inv != null ? inv.holdingItem : null;
+        var hi = inv != null ? inv.holdingItem : null;
         var hid = inv != null ? inv.holdingItemData : null;
         // 構造ガード（既存・残す）: setter(EntityAlive:1495) が actionData[1] を触るため必須
         if (hi == null || hi.Actions == null || hi.Actions.Length < 2 || hi.Actions[1] == null) return false;
@@ -57,7 +57,7 @@ internal class AdsActionValidator
     internal bool CanUseLauncherAds()
     {
         var inv = _i.Self.inventory;
-        var hi  = inv != null ? inv.holdingItem : null;
+        var hi = inv != null ? inv.holdingItem : null;
         var hid = inv != null ? inv.holdingItemData : null;
         if (hi == null || hi.Actions == null || hi.Actions.Length == 0) return false;
         if (hid == null || hid.actionData == null || hid.actionData.Count == 0) return false;

@@ -1,4 +1,4 @@
-# CompanionAI verify harness config (v0.8.1)
+# CompanionAI verify harness config (v0.8.3)
 # 変更後、ゲーム内で F8（ドライブ切替）を押すと再読込されます。起動時にも読込。
 # bool = true/false (1/0/on/off も可) , float = 小数点は '.'（例 3.0）
 
