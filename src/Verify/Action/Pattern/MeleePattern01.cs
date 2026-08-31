@@ -21,7 +21,7 @@
 
 using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Config;
-using CompanionAIVerify.Positioning;
+using CompanionAIVerify.Position;
 
 namespace CompanionAIVerify.Action.Pattern;
 

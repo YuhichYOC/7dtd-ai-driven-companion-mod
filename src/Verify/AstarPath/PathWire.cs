@@ -54,7 +54,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using CompanionAIVerify.Positioning;
+using CompanionAIVerify.Position;
 using UnityEngine;
 using Logger = CompanionAIVerify.Log.Logger;
 

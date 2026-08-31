@@ -23,7 +23,7 @@ extern alias UnityInputLegacy;
 using CompanionAIVerify.Action;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
-using CompanionAIVerify.Positioning;
+using CompanionAIVerify.Position;
 using CompanionAIVerify.Stance;
 using CompanionAIVerify.ToolSelection;
 using CompanionAIVerify.Utility;

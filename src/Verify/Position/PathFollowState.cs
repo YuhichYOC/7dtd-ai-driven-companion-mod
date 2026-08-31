@@ -35,7 +35,7 @@
 
 using UnityEngine;
 
-namespace CompanionAIVerify.Positioning;
+namespace CompanionAIVerify.Position;
 
 internal static class PathFollowState
 {

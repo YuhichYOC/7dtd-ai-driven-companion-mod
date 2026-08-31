@@ -24,7 +24,7 @@ using CompanionAIVerify.Action.Operation;
 using CompanionAIVerify.Action.Validation;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
-using CompanionAIVerify.Positioning;
+using CompanionAIVerify.Position;
 using UnityEngine;
 
 namespace CompanionAIVerify.Action.Scene;

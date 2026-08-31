@@ -25,7 +25,7 @@ using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.AstarPath;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
-using CompanionAIVerify.Positioning;
+using CompanionAIVerify.Position;
 using UnityEngine;
 
 namespace CompanionAIVerify.Log;

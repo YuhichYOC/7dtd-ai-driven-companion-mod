@@ -43,7 +43,7 @@
 
 using System.Collections.Generic;
 using CompanionAIVerify.Config;
-using CompanionAIVerify.Positioning;
+using CompanionAIVerify.Position;
 using UnityEngine;
 
 namespace CompanionAIVerify.Utility.Debugging;

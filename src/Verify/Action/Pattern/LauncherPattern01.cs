@@ -22,7 +22,7 @@
 using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Log;
-using CompanionAIVerify.Positioning;
+using CompanionAIVerify.Position;
 
 namespace CompanionAIVerify.Action.Pattern;
 

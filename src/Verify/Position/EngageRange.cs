@@ -24,7 +24,7 @@ using CompanionAIVerify.Config;
 using UnityEngine;
 using Logger = CompanionAIVerify.Log.Logger;
 
-namespace CompanionAIVerify.Positioning;
+namespace CompanionAIVerify.Position;
 
 /// <summary>
 ///     Slice A: 現在保持中の武器から「交戦の実効レンジ」をランタイムで読み出す。
