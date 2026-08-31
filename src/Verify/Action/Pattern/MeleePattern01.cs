@@ -19,11 +19,11 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Positioning;
 
-namespace CompanionAIVerify.Combat.Action;
+namespace CompanionAIVerify.Action.Pattern;
 
 /*
  * 格闘アクション実装パターン 1

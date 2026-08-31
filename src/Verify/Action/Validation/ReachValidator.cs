@@ -19,12 +19,12 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Positioning;
 using UnityEngine;
 
-namespace CompanionAIVerify.Combat.Validation;
+namespace CompanionAIVerify.Action.Validation;
 
 internal class ReachValidator
 {

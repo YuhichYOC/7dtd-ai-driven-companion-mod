@@ -1,6 +1,6 @@
 /*
  *
- * CombatDriver.cs
+ * ActionDriver.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -20,16 +20,16 @@
  */
 
 using System.Collections.Generic;
-using CompanionAIVerify.Combat.Action;
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Pattern;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Perception;
 using CompanionAIVerify.Stance;
 using UniLinq;
 
-namespace CompanionAIVerify.Combat;
+namespace CompanionAIVerify.Action;
 
 // --- Combat (engage slice) ----------------------------------------------
-internal static class CombatDriver
+internal static class ActionDriver
 {
     internal static ActionResolver ActionResolver;
 

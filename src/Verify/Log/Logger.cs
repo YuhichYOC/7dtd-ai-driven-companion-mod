@@ -21,8 +21,8 @@
 
 extern alias LogLib;
 using System.Linq;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.AstarPath;
-using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
 using CompanionAIVerify.Positioning;

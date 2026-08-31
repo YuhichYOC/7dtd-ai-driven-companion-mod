@@ -19,9 +19,9 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 
-namespace CompanionAIVerify.Combat.Validation;
+namespace CompanionAIVerify.Action.Validation;
 
 internal class AdsActionValidator
 {

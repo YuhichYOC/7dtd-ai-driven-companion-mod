@@ -1,6 +1,6 @@
 /*
  *
- * ApprovementValidator.cs
+ * TargetValidator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -19,32 +19,21 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
-using CompanionAIVerify.Config;
+using CompanionAIVerify.Action.Scene;
 
-namespace CompanionAIVerify.Combat.Validation;
+namespace CompanionAIVerify.Action.Validation;
 
-internal class ApprovementValidator
+internal class TargetValidator
 {
-    private InfoHolder _i;
+    private readonly InfoHolder _i;
 
-    internal ApprovementValidator(InfoHolder i)
+    internal TargetValidator(InfoHolder i)
     {
         _i = i;
     }
 
-    internal bool EngageApproved()
+    internal bool TargetIsValid()
     {
-        return Cfg.CombatMode;
-    }
-
-    internal bool FireApproved()
-    {
-        return Cfg.EnableRangedFire;
-    }
-
-    internal bool BowDrawApproved()
-    {
-        return Cfg.BowChargeEnabled;
+        return _i.Target.Valid;
     }
 }

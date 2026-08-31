@@ -1,6 +1,6 @@
 /*
  *
- * LauncherPattern01.cs
+ * TriggerPattern01.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -19,23 +19,21 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Log;
 using CompanionAIVerify.Positioning;
 
-namespace CompanionAIVerify.Combat.Action;
+namespace CompanionAIVerify.Action.Pattern;
 
 /*
- * ItemActionLauncher ( クロスボウ・ロケットランチャー ) アクション実装パターン 1
- * TriggerActionXX とほぼ同じだが、扱う武器が違うため別のアクションとしている
- * 爆発物による自爆を防ぐ分岐を盛り込む予定
+ * 銃撃アクション実装パターン 1
  */
-internal class LauncherPattern01 : ICombatAction
+internal class TriggerPattern01 : ICombatAction
 {
     private InfoHolder _i;
 
-    string ICombatAction.Name => "LauncherPattern01";
+    string ICombatAction.Name => "TriggerPattern01";
 
     void ICombatAction.Run(InfoHolder i)
     {
@@ -95,7 +93,7 @@ internal class LauncherPattern01 : ICombatAction
         }
 
         // ★ ( 2 ) 発砲準備 : ADS + カメラを狙点へスナップ
-        _i.AimOperator.RangeAimSnapCameraLauncher();
+        _i.AimOperator.RangeAimSnapCamera();
 
         // ★ ( 3 ) フルオート判定して駆動
         _i.TriggerOperator.Run();

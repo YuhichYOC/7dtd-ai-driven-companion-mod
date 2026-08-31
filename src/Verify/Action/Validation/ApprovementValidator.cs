@@ -1,6 +1,6 @@
 /*
  *
- * SwitchOperator.cs
+ * ApprovementValidator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -19,28 +19,32 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
+using CompanionAIVerify.Config;
 
-namespace CompanionAIVerify.Combat.Operation;
+namespace CompanionAIVerify.Action.Validation;
 
-internal class SwitchOperator
+internal class ApprovementValidator
 {
-    private readonly InfoHolder _i;
+    private InfoHolder _i;
 
-    internal SwitchOperator(InfoHolder i)
+    internal ApprovementValidator(InfoHolder i)
     {
         _i = i;
     }
 
-    internal bool Switched { get; private set; }
-
-    internal void Run()
+    internal bool EngageApproved()
     {
-        // v0.8.3
-        // 武器切り替えは WeaponSelector.ApplyMode に一元化
-        // settle も executor 側へ寄せた
-        // 現バージョンではこのクラスを残す
-        // 削除予定
-        Switched = false;
+        return Cfg.CombatMode;
+    }
+
+    internal bool FireApproved()
+    {
+        return Cfg.EnableRangedFire;
+    }
+
+    internal bool BowDrawApproved()
+    {
+        return Cfg.BowChargeEnabled;
     }
 }

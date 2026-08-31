@@ -20,18 +20,18 @@
  */
 
 using System;
-using CompanionAIVerify.Combat.Operation;
-using CompanionAIVerify.Combat.Validation;
+using CompanionAIVerify.Action.Operation;
+using CompanionAIVerify.Action.Validation;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
 using CompanionAIVerify.Positioning;
 using UnityEngine;
 
-namespace CompanionAIVerify.Combat.Scene;
+namespace CompanionAIVerify.Action.Scene;
 
 internal class InfoHolder
 {
-    // CombatDriver の持つ状態があまりに多すぎるので状態を Info にまとめる
+    // ActionDriver の持つ状態があまりに多すぎるので状態を Info にまとめる
     // 状態管理・状態取得に専念する
     //
     // Operation, Validator クラスも同居させる ... これは後でホルダーとなるクラスに分離する必要がある

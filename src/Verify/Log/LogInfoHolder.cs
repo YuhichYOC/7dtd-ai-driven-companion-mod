@@ -23,7 +23,7 @@ namespace CompanionAIVerify.Log;
 
 internal static class LogInfoHolder
 {
-    // CombatDriver など、各クラスの持つ状態のうちログに関するものを LogInfo にまとめる
+    // ActionDriver など、各クラスの持つ状態のうちログに関するものを LogInfo にまとめる
 
     // 武器分類器ログ throttle
     internal static float NextWeaponClassifyLogTime { get; set; }

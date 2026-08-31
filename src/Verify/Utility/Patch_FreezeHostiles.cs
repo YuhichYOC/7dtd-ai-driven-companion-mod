@@ -41,7 +41,7 @@ namespace CompanionAIVerify.Utility;
 //
 //   交戦成立との関係:
 //     ThreatScanner は「起きている敵対」を Valid にする（IsSleeping の Unawakened のみ除外）。
-//     CombatDriver/approach は State==Engaged に依存しない（State はログ表示のみ）。
+//     ActionDriver/approach は State==Engaged に依存しない（State はログ表示のみ）。
 //     → 固定されていてもコンパニオンは通常どおり脅威として検知・接近・交戦する。pin ハーネスは不要。
 //
 //   実装:

@@ -21,11 +21,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Config;
 using UnityEngine;
 
-namespace CompanionAIVerify.Combat.Validation;
+namespace CompanionAIVerify.Action.Validation;
 
 internal class ShootableValidator
 {

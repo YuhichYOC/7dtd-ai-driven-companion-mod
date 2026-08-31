@@ -1,6 +1,6 @@
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 
-namespace CompanionAIVerify.Combat.Action;
+namespace CompanionAIVerify.Action.Pattern;
 
 internal interface ICombatAction
 {

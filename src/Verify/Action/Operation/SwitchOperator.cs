@@ -1,6 +1,6 @@
 /*
  *
- * TargetValidator.cs
+ * SwitchOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -19,21 +19,28 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 
-namespace CompanionAIVerify.Combat.Validation;
+namespace CompanionAIVerify.Action.Operation;
 
-internal class TargetValidator
+internal class SwitchOperator
 {
     private readonly InfoHolder _i;
 
-    internal TargetValidator(InfoHolder i)
+    internal SwitchOperator(InfoHolder i)
     {
         _i = i;
     }
 
-    internal bool TargetIsValid()
+    internal bool Switched { get; private set; }
+
+    internal void Run()
     {
-        return _i.Target.Valid;
+        // v0.8.3
+        // 武器切り替えは WeaponSelector.ApplyMode に一元化
+        // settle も executor 側へ寄せた
+        // 現バージョンではこのクラスを残す
+        // 削除予定
+        Switched = false;
     }
 }

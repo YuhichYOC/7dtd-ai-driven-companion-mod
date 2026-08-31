@@ -19,10 +19,10 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Config;
 
-namespace CompanionAIVerify.Combat.Operation;
+namespace CompanionAIVerify.Action.Operation;
 
 internal class AdsOperator
 {

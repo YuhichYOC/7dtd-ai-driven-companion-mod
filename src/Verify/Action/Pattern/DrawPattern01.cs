@@ -19,12 +19,12 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Log;
 using CompanionAIVerify.Positioning;
 
-namespace CompanionAIVerify.Combat.Action;
+namespace CompanionAIVerify.Action.Pattern;
 
 /*
  * 弓用アクション実装パターン 1

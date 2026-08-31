@@ -20,7 +20,7 @@
  */
 
 extern alias UnityInputLegacy;
-using CompanionAIVerify.Combat;
+using CompanionAIVerify.Action;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
 using CompanionAIVerify.Positioning;
@@ -100,7 +100,7 @@ internal static class CompanionExecutor
     private static void TurnOff(EntityPlayerLocal self)
     {
         _leader = null;
-        CombatDriver.ReleaseFireIfPressed(self);
+        ActionDriver.ReleaseFireIfPressed(self);
         Stop(self);
         DebugOverlay.Hide();
     }
@@ -129,7 +129,7 @@ internal static class CompanionExecutor
         PositionResolver.Run(self, _threat); // 判断 : どの位置 ( 現状 Follow01 固定 )
         _weaponSwitched = WeaponSelector.ApplyMode(self, ActionResolver.WantMode);
         ActionResolver.ResolveAction(self);
-        CombatDriver.ActionResolver = ActionResolver;
+        ActionDriver.ActionResolver = ActionResolver;
         // 切替を発火したフレームは交戦を1回休む ( settle )。移動は通常どおり
         //   ApplyMode が切替前に ReleaseFireIfPressed 済 = 暴発防止。かつ held 反映の 1 frame 遅延もここで吸収
     }
@@ -142,7 +142,7 @@ internal static class CompanionExecutor
     {
         // --- 交戦オーバーレイ（Section E）: 最後に実行 ---
         //   in-range の近接は 3D エイムで上の平面 facing を上書きしつつ press 駆動。
-        if (!_weaponSwitched) CombatDriver.OnCombatStep(self, _threat);
+        if (!_weaponSwitched) ActionDriver.OnCombatStep(self, _threat);
     }
 
     #endregion
@@ -181,15 +181,15 @@ internal static class CompanionExecutor
         //   移動目標をリーダーから脅威へ差し替えて前進する（既存の Stop@standoff / Steer→_leader を上書き）。
         //   接近steer の後に交戦オーバーレイを回して、リーチに入った瞬間から歩きながら振れるようにする。
         if (!TryMeleeApproach(self, in _threat)) return false;
-        if (!_weaponSwitched) CombatDriver.OnCombatStep(self, _threat);
+        if (!_weaponSwitched) ActionDriver.OnCombatStep(self, _threat);
         return true;
     }
 
     // v0.8(B): 格闘オートアプローチの判定＋実行。
     //   条件: MeleeAutoApproach ON / 交戦中脅威あり / 格闘武器保持 / reach < d <= approachMax。
-    //   距離 d は CombatDriver の swing ゲートと同じ threat.DistSq(feet-to-feet)基準に揃える。
+    //   距離 d は ActionDriver の swing ゲートと同じ threat.DistSq(feet-to-feet)基準に揃える。
     //   reach は EngageRange の実効リーチ（Dynamic melee も正しく解決）。
-    //   停止は d<=reach。swing は CombatDriver 側で reach+ReachBuffer から開くので、
+    //   停止は d<=reach。swing は ActionDriver 側で reach+ReachBuffer から開くので、
     //   接近の最終区間は「歩きながら振る」→ reach で停止して振り続ける、と滑らかに繋がる。
     private static bool TryMeleeApproach(EntityPlayerLocal self, in ThreatInfo threat)
     {
@@ -346,7 +346,7 @@ internal static class CompanionExecutor
         flat.Normalize();
 
         // Entity.position はワールド座標（World 内の worldToBlockPos(_position) 呼び出し群と同じ扱い）。
-        //   ※ CombatDriver で Origin を足したのは playerCamera.transform.position が Unity レンダ座標だったため。
+        //   ※ ActionDriver で Origin を足したのは playerCamera.transform.position が Unity レンダ座標だったため。
         //     Entity.position には Origin 補正は不要。Origin.position はログにだけ残し、非ゼロ環境で気付けるようにする。
         var wp = self.position;
         var ahead = wp + flat * Cfg.JumpProbeAhead;

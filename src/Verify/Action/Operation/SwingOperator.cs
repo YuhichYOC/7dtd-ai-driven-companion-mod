@@ -19,10 +19,10 @@
  *
  */
 
-using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Action.Scene;
 using CompanionAIVerify.Log;
 
-namespace CompanionAIVerify.Combat.Operation;
+namespace CompanionAIVerify.Action.Operation;
 
 internal class SwingOperator
 {

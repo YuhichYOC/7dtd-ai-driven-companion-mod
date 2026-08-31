@@ -19,7 +19,7 @@
  *
  */
 
-using CompanionAIVerify.Combat;
+using CompanionAIVerify.Action;
 using CompanionAIVerify.Config;
 using UnityEngine;
 using Logger = CompanionAIVerify.Log.Logger;
@@ -95,7 +95,7 @@ internal static class WeaponSelector
         if (Time.time < _nextSwitchTime) return false;
         _nextSwitchTime = Time.time + Cfg.WeaponSwitchMinIntervalSec;
 
-        CombatDriver.ReleaseFireIfPressed(self);
+        ActionDriver.ReleaseFireIfPressed(self);
         inv.SetHoldingItemIdxNoHolsterTime(slot);
 
         Logger.LogWeaponSwitch(mode == WeaponMode.Ranged ? "RANGED" : "MELEE", slot, -1.0f, _rangedSlot,
