@@ -38,41 +38,129 @@ internal static class CompanionExecutor
 {
     private static readonly ActionResolver ActionResolver = new();
     private static readonly PositionResolver PositionResolver = new();
+    private static EntityPlayer _leader;
+    private static ThreatInfo _threat;
+    private static bool _weaponSwitched;
 
     internal static void OnMovePrefix(EntityPlayerLocal self)
     {
-        if (UnityInputLegacy::UnityEngine.Input.GetKeyDown(Cfg.ToggleKey))
-        {
-            ModCfgFile.Reload(); // 編集した companion_config.txt を即反映
-            Cfg.Enabled = !Cfg.Enabled;
-            Logger.LogModEnabled();
-            if (!Cfg.Enabled)
-            {
-                CombatDriver.ReleaseFireIfPressed(self);
-                Stop(self);
-                DebugOverlay.Hide();
-            }
-        }
-
-        if (!Cfg.Enabled) return;
+        if (!ReadToggleKey(self)) return;
 
         var world = GameManager.Instance != null ? GameManager.Instance.World : null;
         if (world == null || self != world.GetPrimaryPlayer()) return;
 
-        var leader = FindNearestLeader(world, self);
-        if (leader == null)
+        if (!FindNearestLeader(world, self)) return;
+
+        RunUtilities(self);
+        RunRepositoryUtilities(self);
+        FindThreat(world, self);
+        RunResolvers(self);
+
+        if (RunMeleePositioning(self)) return;
+
+        RunFollowPositioning(self);
+        RunCombatDriver(self);
+    }
+
+    #region 有効・無効
+
+    private static bool ReadToggleKey(EntityPlayerLocal self)
+    {
+        if (!UnityInputLegacy::UnityEngine.Input.GetKeyDown(Cfg.ToggleKey)) return Cfg.Enabled;
+        ModCfgFile.Reload(); // 編集した companion_config.txt を即反映
+        Cfg.Enabled = !Cfg.Enabled;
+        Logger.LogModEnabled();
+        if (!Cfg.Enabled) TurnOff(self);
+
+        return Cfg.Enabled;
+    }
+
+    #endregion
+
+    #region リーダーの検索
+
+    private static bool FindNearestLeader(World world, EntityPlayerLocal self)
+    {
+        if (_leader != null) return true;
+        _leader = PlayerScanner.FindNearestLeader(world, self);
+        if (_leader != null)
         {
-            CombatDriver.ReleaseFireIfPressed(self);
-            Stop(self);
-            DebugOverlay.Hide();
-            return;
+            Logger.LogLeaderFound(_leader.entityId);
+            return true;
         }
 
+        TurnOff(self);
+        return false;
+    }
+
+    #endregion
+
+    #region モジュールの停止
+
+    private static void TurnOff(EntityPlayerLocal self)
+    {
+        _leader = null;
+        CombatDriver.ReleaseFireIfPressed(self);
+        Stop(self);
+        DebugOverlay.Hide();
+    }
+
+    #endregion
+
+    #region 脅威検知
+
+    private static void FindThreat(World world, EntityPlayerLocal self)
+    {
+        // --- 脅威検知（Section B） ---
+        _threat = ThreatScanner.ScanNearestActiveThreat(world, self);
+        Logger.LogThreat(_threat);
+    }
+
+    #endregion
+
+    #region 制御切り替え
+
+    private static void RunResolvers(EntityPlayerLocal self)
+    {
+        // v0.8.1 ロジック動的切り替え
+        // v0.8.3 依存反転
+        //   [ データ ] RefreshLoadout ( 上で実行済 ) -> [ 判断 ] ActionResolver -> [ 実行 ] WeaponSelector -> [ 確定 ] ResolveAction
+        ActionResolver.Run(self, _threat); // 判断 : どの武器モード ( WantMode )
+        PositionResolver.Run(self, _threat); // 判断 : どの位置 ( 現状 Follow01 固定 )
+        _weaponSwitched = WeaponSelector.ApplyMode(self, ActionResolver.WantMode);
+        ActionResolver.ResolveAction(self);
+        CombatDriver.ActionResolver = ActionResolver;
+        // 切替を発火したフレームは交戦を1回休む ( settle )。移動は通常どおり
+        //   ApplyMode が切替前に ReleaseFireIfPressed 済 = 暴発防止。かつ held 反映の 1 frame 遅延もここで吸収
+    }
+
+    #endregion
+
+    #region 交戦に関するメソッド
+
+    private static void RunCombatDriver(EntityPlayerLocal self)
+    {
+        // --- 交戦オーバーレイ（Section E）: 最後に実行 ---
+        //   in-range の近接は 3D エイムで上の平面 facing を上書きしつつ press 駆動。
+        if (!_weaponSwitched) CombatDriver.OnCombatStep(self, _threat);
+    }
+
+    #endregion
+
+    #region ユーティリティの実行
+
+    private static void RunUtilities(EntityPlayerLocal self)
+    {
         // --- デバッグ・オーバーレイ ( 移動目的地の光柱 ) : world / leader 確定直後 ---
         //   真実を読むだけ ( leader.position と PathFollowState の公開配列 )
         //   移動ロジックは複製しない
-        DebugOverlay.Sync(self, leader);
+        DebugOverlay.Sync(self, _leader);
 
+        LeaderItemPickup.MaybeRun(self, _leader);
+    }
+
+    private static void RunRepositoryUtilities(EntityPlayerLocal self)
+    {
         if (Cfg.Enabled)
         {
             WeaponSelector.RefreshLoadout(self, true);
@@ -80,78 +168,21 @@ internal static class CompanionExecutor
         }
 
         ItemStower.MaybeRun(self, false);
-        LeaderItemPickup.MaybeRun(self, leader);
+    }
 
-        // --- 脅威検知（Section B） ---
-        var threat = ThreatScanner.ScanNearestActiveThreat(world, self);
-        Logger.LogThreat(threat);
+    #endregion
 
-        // v0.8.1 ロジック動的切り替え
-        // v0.8.3 依存反転
-        //   [ データ ] RefreshLoadout ( 上で実行済 ) -> [ 判断 ] ActionResolver -> [ 実行 ] WeaponSelector -> [ 確定 ] ResolveAction
-        ActionResolver.Run(self, threat); // 判断 : どの武器モード ( WantMode )
-        PositionResolver.Run(self, threat); // 判断 : どの位置 ( 現状 Follow01 固定 )
-        var switched = WeaponSelector.ApplyMode(self, ActionResolver.WantMode);
-        ActionResolver.ResolveAction(self);
-        CombatDriver.ActionResolver = ActionResolver;
-        // 切替を発火したフレームは交戦を1回休む ( settle )。移動は通常どおり
-        //   ApplyMode が切替前に ReleaseFireIfPressed 済 = 暴発防止。かつ held 反映の 1 frame 遅延もここで吸収
+    #region 移動に関するメソッド
 
+    private static bool RunMeleePositioning(EntityPlayerLocal self)
+    {
         // --- v0.8(B): 格闘オートアプローチ（follow より優先） ---
         //   格闘武器 かつ 交戦中脅威が「リーチ外 かつ approachMax 内」のとき、
-        //   移動目標をリーダーから脅威へ差し替えて前進する（既存の Stop@standoff / Steer→leader を上書き）。
+        //   移動目標をリーダーから脅威へ差し替えて前進する（既存の Stop@standoff / Steer→_leader を上書き）。
         //   接近steer の後に交戦オーバーレイを回して、リーチに入った瞬間から歩きながら振れるようにする。
-        if (TryMeleeApproach(self, in threat))
-        {
-            if (!switched) CombatDriver.OnCombatStep(self, threat);
-            return;
-        }
-
-        // --- posture: follow ---
-        var flat = leader.position - self.position;
-        flat.y = 0f;
-        var dist = flat.magnitude;
-
-        var lookDir = flat;
-        if (Cfg.CombatMode && threat.Valid)
-        {
-            var toThreat = threat.Target.position - self.position;
-            toThreat.y = 0f;
-            if (toThreat.sqrMagnitude > 0.001f) lookDir = toThreat;
-        }
-
-        if (dist <= Cfg.StandoffMeters)
-        {
-            if (Cfg.CombatMode && threat.Valid) FaceOnly(self, lookDir);
-            Stop(self);
-        }
-        else
-        {
-            // 既定は直線でリーダーへ。経路が届いていれば中間ウェイポイントへ向かう（navigation スライス3）。
-            var moveTarget = leader.position;
-            var pathActive = false;
-            if (Cfg.PathFollow &&
-                PathFollowState.TryGetMoveTarget(self.position, Cfg.WaypointArriveM, Cfg.WaypointHeightTolM,
-                    Cfg.PathStaleSec, out var wpTarget, out var _pstatus))
-            {
-                moveTarget = wpTarget;
-                pathActive = true;
-            }
-
-            // 戦闘中は脅威を向く(既存優先)。非戦闘の経路追従中のみ進行方向を向く。
-            if (!(Cfg.CombatMode && threat.Valid) && pathActive)
-            {
-                var tdir = moveTarget - self.position;
-                tdir.y = 0f;
-                if (tdir.sqrMagnitude > 0.001f) lookDir = tdir;
-            }
-
-            Steer(self, moveTarget, lookDir, dist > Cfg.RunMeters);
-        }
-
-        // --- 交戦オーバーレイ（Section E）: 最後に実行 ---
-        //   in-range の近接は 3D エイムで上の平面 facing を上書きしつつ press 駆動。
-        if (!switched) CombatDriver.OnCombatStep(self, threat);
+        if (!TryMeleeApproach(self, in _threat)) return false;
+        if (!_weaponSwitched) CombatDriver.OnCombatStep(self, _threat);
+        return true;
     }
 
     // v0.8(B): 格闘オートアプローチの判定＋実行。
@@ -183,6 +214,58 @@ internal static class CompanionExecutor
         lookDir.y = 0f;
         Steer(self, threat.Target.position, lookDir, false); // 数m の詰めは歩き（照準安定）
         return true;
+    }
+
+    private static void RunFollowPositioning(EntityPlayerLocal self)
+    {
+        // --- posture: follow ---
+        var flat = _leader.position - self.position;
+        flat.y = 0f;
+        var dist = flat.magnitude;
+
+        var lookDir = flat;
+        if (Cfg.CombatMode && _threat.Valid)
+        {
+            var toThreat = _threat.Target.position - self.position;
+            toThreat.y = 0f;
+            if (toThreat.sqrMagnitude > 0.001f) lookDir = toThreat;
+        }
+
+        if (dist <= Cfg.StandoffMeters)
+        {
+            if (Cfg.CombatMode && _threat.Valid) FaceOnly(self, lookDir);
+            Stop(self);
+        }
+        else
+        {
+            // 既定は直線でリーダーへ。経路が届いていれば中間ウェイポイントへ向かう（navigation スライス3）。
+            var moveTarget = _leader.position;
+            var pathActive = false;
+            if (Cfg.PathFollow &&
+                PathFollowState.TryGetMoveTarget(self.position, Cfg.WaypointArriveM, Cfg.WaypointHeightTolM,
+                    Cfg.PathStaleSec, out var wpTarget, out var _pstatus))
+            {
+                moveTarget = wpTarget;
+                pathActive = true;
+            }
+
+            // 戦闘中は脅威を向く(既存優先)。非戦闘の経路追従中のみ進行方向を向く。
+            if (!(Cfg.CombatMode && _threat.Valid) && pathActive)
+            {
+                var tdir = moveTarget - self.position;
+                tdir.y = 0f;
+                if (tdir.sqrMagnitude > 0.001f) lookDir = tdir;
+            }
+
+            Steer(self, moveTarget, lookDir, dist > Cfg.RunMeters);
+        }
+    }
+
+    private static void FaceOnly(EntityPlayerLocal self, Vector3 lookDir)
+    {
+        var ld = lookDir;
+        ld.y = 0f;
+        if (ld.sqrMagnitude > 0.001f) FaceWorldDir(self, ld.normalized);
     }
 
     private static void Steer(EntityPlayerLocal self, Vector3 moveTarget, Vector3 lookDir, bool running)
@@ -219,6 +302,23 @@ internal static class CompanionExecutor
         //   jump は EPL:3526 で inputWasJump とのエッジ比較＋onGround ゲート(EPL:3530)。詰まっている間 true を
         //   返し続けても、初回発火→空中(onGround=false で false)→着地で再評価、と自然に1回ずつジャンプする。
         self.movementInput.jump = ShouldJumpObstacle(self, moveWorld);
+        self.movementInput.down = false;
+    }
+
+    private static void FaceWorldDir(EntityPlayerLocal self, Vector3 worldDir)
+    {
+        if (worldDir.sqrMagnitude < 1e-6f) return;
+        var euler = Quaternion.LookRotation(worldDir.normalized, Vector3.up).eulerAngles;
+        euler.x *= -1f;
+        self.SetRotation(euler);
+    }
+
+    private static void Stop(EntityPlayerLocal self)
+    {
+        self.movementInput.moveForward = 0f;
+        self.movementInput.moveStrafe = 0f;
+        self.movementInput.running = false;
+        self.movementInput.jump = false;
         self.movementInput.down = false;
     }
 
@@ -273,48 +373,5 @@ internal static class CompanionExecutor
         return b != null && b.IsCollideMovement;
     }
 
-    private static void FaceOnly(EntityPlayerLocal self, Vector3 lookDir)
-    {
-        var ld = lookDir;
-        ld.y = 0f;
-        if (ld.sqrMagnitude > 0.001f) FaceWorldDir(self, ld.normalized);
-    }
-
-    private static void FaceWorldDir(EntityPlayerLocal self, Vector3 worldDir)
-    {
-        if (worldDir.sqrMagnitude < 1e-6f) return;
-        var euler = Quaternion.LookRotation(worldDir.normalized, Vector3.up).eulerAngles;
-        euler.x *= -1f;
-        self.SetRotation(euler);
-    }
-
-    private static void Stop(EntityPlayerLocal self)
-    {
-        self.movementInput.moveForward = 0f;
-        self.movementInput.moveStrafe = 0f;
-        self.movementInput.running = false;
-        self.movementInput.jump = false;
-        self.movementInput.down = false;
-    }
-
-    private static EntityPlayer FindNearestLeader(World world, EntityPlayerLocal self)
-    {
-        var players = world.GetPlayers();
-        if (players == null) return null;
-        EntityPlayer best = null;
-        var bestSq = float.MaxValue;
-        for (var i = 0; i < players.Count; i++)
-        {
-            var p = players[i];
-            if (p == null || p == self || p.IsDead()) continue;
-            var sq = (p.position - self.position).sqrMagnitude;
-            if (sq < bestSq)
-            {
-                bestSq = sq;
-                best = p;
-            }
-        }
-
-        return best;
-    }
+    #endregion
 }

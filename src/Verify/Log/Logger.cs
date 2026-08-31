@@ -46,6 +46,11 @@ internal static class Logger
         PrintLog($"[CompanionAI] drive = {Cfg.Enabled}");
     }
 
+    internal static void LogLeaderFound(int id)
+    {
+        PrintLog($"[CompanionAI] leader found {id}");
+    }
+
     internal static void LogHostPathProveToggle()
     {
         PrintLog($"[CompanionAI][host] path-probe = {HostProbeCfg.Enabled}");
