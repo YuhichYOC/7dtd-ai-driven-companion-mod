@@ -41,7 +41,7 @@ internal class TriggerPattern01 : ICombatAction
 
         if (!_i.ApprovementValidator.EngageApproved() || !_i.TargetValidator.TargetIsValid())
         {
-            _i.ReleaseOperation.Run();
+            _i.ReleaseOperator.Run();
             return;
         }
 
@@ -50,15 +50,15 @@ internal class TriggerPattern01 : ICombatAction
 
         EngageRange.LogTick(_i.Self, _i.Target.Target);
 
-        _i.SwitchOperation.Run();
-        if (_i.SwitchOperation.Switched) return;
+        _i.SwitchOperator.Run();
+        if (_i.SwitchOperator.Switched) return;
 
         // ★ ( 1 ) 交戦の手前で bFirstPersonView を実ログ確定
         // ★ v0.8(C) 射程ゲート
         if (!_i.ReachValidator.TargetInReach())
         {
-            _i.FpvOperation.Run();
-            _i.ReleaseOperation.Run();
+            _i.FpvOperator.Run();
+            _i.ReleaseOperator.Run();
             Logger.LogTargetOutOfRange(_i);
             return;
         }
@@ -66,20 +66,20 @@ internal class TriggerPattern01 : ICombatAction
         // --- 発砲ドライバ ( v0.6.0 ) ---
         if (!_i.ApprovementValidator.FireApproved())
         {
-            _i.ReleaseOperation.Run();
+            _i.ReleaseOperator.Run();
             Logger.LogRangedProhibited(_i);
             return;
         }
 
         // ★ ( 1 ) 射線が対象に届く狙点を探す
-        _i.AimOperation.RangeAim();
+        _i.AimOperator.RangeAim();
 
         // body / 視覚トラッキング ( 見た目の照準 ) はホールド中も維持
-        _i.AimOperation.RangeRotate();
+        _i.AimOperator.RangeRotate();
 
-        if (!_i.AimOperation.Shootable) // ★ 撃たない : 遮蔽 / FF / 空。理由をログしてホールド
+        if (!_i.AimOperator.Shootable) // ★ 撃たない : 遮蔽 / FF / 空。理由をログしてホールド
         {
-            _i.ReleaseOperation.Run();
+            _i.ReleaseOperator.Run();
             Logger.LogShootableNotFound(_i);
             return;
         }
@@ -87,15 +87,15 @@ internal class TriggerPattern01 : ICombatAction
         // ★ v0.8(D) 友軍射線ガード
         if (Cfg.FriendlyFireGate && _i.ShootableValidator.FriendlyInLineOfFire())
         {
-            _i.ReleaseOperation.Run();
+            _i.ReleaseOperator.Run();
             Logger.LogFriendlyInLineOfFire(_i);
             return;
         }
 
         // ★ ( 2 ) 発砲準備 : ADS + カメラを狙点へスナップ
-        _i.AimOperation.RangeAimSnapCamera();
+        _i.AimOperator.RangeAimSnapCamera();
 
         // ★ ( 3 ) フルオート判定して駆動
-        _i.TriggerOperation.Run();
+        _i.TriggerOperator.Run();
     }
 }

@@ -24,7 +24,7 @@ using CompanionAIVerify.Config;
 using CompanionAIVerify.Positioning;
 using UnityEngine;
 
-namespace CompanionAIVerify.Combat.Validate;
+namespace CompanionAIVerify.Combat.Validation;
 
 internal class ReachValidator
 {

@@ -1,6 +1,6 @@
 /*
  *
- * SwingOperation.cs
+ * ApprovementValidator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -20,28 +20,31 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
-using CompanionAIVerify.Log;
+using CompanionAIVerify.Config;
 
-namespace CompanionAIVerify.Combat.Operate;
+namespace CompanionAIVerify.Combat.Validation;
 
-internal class SwingOperation
+internal class ApprovementValidator
 {
-    private readonly InfoHolder _i;
+    private InfoHolder _i;
 
-    internal SwingOperation(InfoHolder i)
+    internal ApprovementValidator(InfoHolder i)
     {
         _i = i;
     }
 
-    // 近接 press 中フラグ
-    internal bool Pressed { get; set; }
-
-    internal void Run()
+    internal bool EngageApproved()
     {
-        if (_i.Self.Attack(false)) // press。ケイデンスは canStartAttack の APM 律速が制御
-        {
-            Pressed = true;
-            Logger.LogMeleeSwing(_i);
-        }
+        return Cfg.CombatMode;
+    }
+
+    internal bool FireApproved()
+    {
+        return Cfg.EnableRangedFire;
+    }
+
+    internal bool BowDrawApproved()
+    {
+        return Cfg.BowChargeEnabled;
     }
 }

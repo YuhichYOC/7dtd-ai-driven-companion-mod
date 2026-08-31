@@ -25,7 +25,7 @@ using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
 using UnityEngine;
 
-namespace CompanionAIVerify.Combat.Validate;
+namespace CompanionAIVerify.Combat.Validation;
 
 internal class ShootableValidator
 {
@@ -55,7 +55,7 @@ internal class ShootableValidator
         if (world == null) return false;
 
         var origin = _i.Self.GetLookRay().origin; // 実射と同一原点
-        var dir = _i.AimOperation.AimPoint - origin;
+        var dir = _i.AimOperator.AimPoint - origin;
         var dlen = dir.magnitude; // 対象狙点までの距離 ( この手前だけ問題 )
         if (dlen < 1e-4f) return false;
         var shotRay = new Ray(origin, dir / dlen);

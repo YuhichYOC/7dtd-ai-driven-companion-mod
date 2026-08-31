@@ -48,7 +48,7 @@ internal static class CombatDriver
     internal static void ReleaseFireIfPressed(EntityPlayerLocal self)
     {
         InfoHolder.Self = self;
-        InfoHolder.ReleaseOperation.Run();
+        InfoHolder.ReleaseOperator.Run();
     }
 
     // 交戦オーバーレイ。posture 決定の後に最後に呼ぶ（in-range 時の 3D エイムが

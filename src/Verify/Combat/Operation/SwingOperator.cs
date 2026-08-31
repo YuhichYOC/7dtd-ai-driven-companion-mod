@@ -1,6 +1,6 @@
 /*
  *
- * FullAutoValidator.cs
+ * SwingOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -20,29 +20,28 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Log;
 
-namespace CompanionAIVerify.Combat.Validate;
+namespace CompanionAIVerify.Combat.Operation;
 
-internal class FullAutoValidator
+internal class SwingOperator
 {
     private readonly InfoHolder _i;
 
-    internal FullAutoValidator(InfoHolder i)
+    internal SwingOperator(InfoHolder i)
     {
         _i = i;
     }
 
-    // フルオート判定
-    // GetBurstCount == 0
-    //   BurstRoundCount ... 既定 1 = セミ, 0 = フル, N = バースト
-    internal bool IsFullAuto()
+    // 近接 press 中フラグ
+    internal bool Pressed { get; set; }
+
+    internal void Run()
     {
-        var inv = _i.Self.inventory;
-        var hi = inv != null ? inv.holdingItem : null;
-        var hid = inv != null ? inv.holdingItemData : null;
-        var ra = hi.Actions[0] as ItemActionRanged;
-        if (hi == null || hi.Actions == null || hi.Actions.Length == 0) return false;
-        if (ra == null || hid == null || hid.actionData == null || hid.actionData.Count == 0) return false;
-        return ra.GetBurstCount(hid.actionData[0]) == 0;
+        if (_i.Self.Attack(false)) // press。ケイデンスは canStartAttack の APM 律速が制御
+        {
+            Pressed = true;
+            Logger.LogMeleeSwing(_i);
+        }
     }
 }

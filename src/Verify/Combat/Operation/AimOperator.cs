@@ -1,6 +1,6 @@
 /*
  *
- * AimOperation.cs
+ * AimOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -23,13 +23,13 @@ using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
 using UnityEngine;
 
-namespace CompanionAIVerify.Combat.Operate;
+namespace CompanionAIVerify.Combat.Operation;
 
-internal class AimOperation
+internal class AimOperator
 {
     private readonly InfoHolder _i;
 
-    internal AimOperation(InfoHolder i)
+    internal AimOperator(InfoHolder i)
     {
         _i = i;
     }
@@ -206,7 +206,7 @@ internal class AimOperation
     internal void RangeAimSnapCamera()
     {
         var shotDir = AimPoint - CamWorld;
-        _i.AdsOperation.Run(true);
+        _i.AdsOperator.Run(true);
         if (Cfg.SnapCameraOnFire && _i.Self.playerCamera != null && shotDir.sqrMagnitude > 1e-6f)
             _i.Self.playerCamera.transform.rotation = Quaternion.LookRotation(shotDir.normalized, Vector3.up);
     }
@@ -217,7 +217,7 @@ internal class AimOperation
     internal void RangeAimSnapCameraLauncher()
     {
         var shotDir = AimPoint - CamWorld;
-        _i.AdsOperation.RunLauncher(true);
+        _i.AdsOperator.RunLauncher(true);
         if (Cfg.SnapCameraOnFire && _i.Self.playerCamera != null && shotDir.sqrMagnitude > 1e-6f)
             _i.Self.playerCamera.transform.rotation = Quaternion.LookRotation(shotDir.normalized, Vector3.up);
     }

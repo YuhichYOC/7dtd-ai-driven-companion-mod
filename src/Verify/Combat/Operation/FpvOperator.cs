@@ -1,6 +1,6 @@
 /*
  *
- * SwitchOperation.cs
+ * FpvOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -20,27 +20,39 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
+using CompanionAIVerify.Config;
+using CompanionAIVerify.Log;
 
-namespace CompanionAIVerify.Combat.Operate;
+namespace CompanionAIVerify.Combat.Operation;
 
-internal class SwitchOperation
+internal class FpvOperator
 {
     private readonly InfoHolder _i;
+    private bool _fpvLogged;
 
-    internal SwitchOperation(InfoHolder i)
+    private bool _lastFpv;
+
+    internal FpvOperator(InfoHolder i)
     {
         _i = i;
+        _fpvLogged = false;
     }
 
-    internal bool Switched { get; private set; }
-
+    // 交戦の手前で bFirstPersonView を実ログ
+    // 初回 or 変化時のみ出力
     internal void Run()
     {
-        // v0.8.3
-        // 武器切り替えは WeaponSelector.ApplyMode に一元化
-        // settle も executor 側へ寄せた
-        // 現バージョンではこのクラスを残す
-        // 削除予定
-        Switched = false;
+        var fpv = _i.Self.bFirstPersonView;
+        if (_fpvLogged && fpv == _lastFpv) return;
+
+        _fpvLogged = true;
+        _lastFpv = fpv;
+        Logger.LogFpv(_i, fpv);
+
+        if (!fpv && Cfg.ForceFirstPerson)
+        {
+            _i.Self.SetFirstPersonView(true, false); // spawn 経路の誤設定を自己修復
+            Logger.LogFpv(_i);
+        }
     }
 }

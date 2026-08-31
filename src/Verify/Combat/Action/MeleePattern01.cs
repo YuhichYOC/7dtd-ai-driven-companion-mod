@@ -40,7 +40,7 @@ internal class MeleePattern01 : ICombatAction
 
         if (!_i.ApprovementValidator.EngageApproved() || !_i.TargetValidator.TargetIsValid())
         {
-            _i.ReleaseOperation.Run();
+            _i.ReleaseOperator.Run();
             return;
         }
 
@@ -49,21 +49,21 @@ internal class MeleePattern01 : ICombatAction
 
         EngageRange.LogTick(_i.Self, _i.Target.Target);
 
-        _i.SwitchOperation.Run();
-        if (_i.SwitchOperation.Switched) return;
+        _i.SwitchOperator.Run();
+        if (_i.SwitchOperator.Switched) return;
 
         // ★ ( 1 ) 交戦の手前で bFirstPersonView を実ログ確定
-        if (_i.ReachValidator.TargetInReach()) _i.FpvOperation.Run();
+        if (_i.ReachValidator.TargetInReach()) _i.FpvOperator.Run();
 
         // ★ ( 2 ) 近接交戦
         // 3D エイム ( ピッチ込み ) -> press 駆動スイング
-        _i.FaceOperation.Run();
+        _i.FaceOperator.Run();
 
         // ★ v0.8(B)-A
         // 近接レイをターゲットのチェストへ自動補正させる
-        _i.AimOperation.MeleeAim();
+        _i.AimOperator.MeleeAim();
 
         // press
-        _i.SwingOperation.Run();
+        _i.SwingOperator.Run();
     }
 }

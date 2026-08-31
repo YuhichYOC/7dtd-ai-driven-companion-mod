@@ -1,4 +1,4 @@
-/*
+﻿/*
  *
  * Patch_FireOriginFix.cs
  *
@@ -31,7 +31,7 @@ namespace CompanionAIVerify.Utility;
 //   問題: EntityPlayerLocal.GetLookRay()(EPL:3847) は playerCamera のレンズ位置を
 //         そのまま射撃原点に採用する。一人称カメラ(vp_FPCamera)はピッチが深いほど
 //         レンズを目(≈GetEyeHeight)から離す(俯角=下・後方 / 仰角=下・前方, 実測 約1.5m)。
-//         一方 FaceOperation は eye=position+1.5 前提でピッチを算出するため、
+//         一方 FaceOperator は eye=position+1.5 前提でピッチを算出するため、
 //         急角度ほど「目基準のピッチ」を膝下・体外のレンズから撃つ形になり全弾外す
 //         (実測: 急俯角76/76・急仰角307/320 が hit=none。命中は dir.y≈0 のときのみ)。
 //

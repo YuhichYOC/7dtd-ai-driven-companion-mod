@@ -20,8 +20,8 @@
  */
 
 using System;
-using CompanionAIVerify.Combat.Operate;
-using CompanionAIVerify.Combat.Validate;
+using CompanionAIVerify.Combat.Operation;
+using CompanionAIVerify.Combat.Validation;
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
 using CompanionAIVerify.Positioning;
@@ -42,15 +42,15 @@ internal class InfoHolder
 
     internal InfoHolder()
     {
-        AdsOperation = new AdsOperation(this);
-        AimOperation = new AimOperation(this);
-        DrawOperation = new DrawOperation(this);
-        FaceOperation = new FaceOperation(this);
-        FpvOperation = new FpvOperation(this);
-        ReleaseOperation = new ReleaseOperation(this);
-        SwingOperation = new SwingOperation(this);
-        SwitchOperation = new SwitchOperation(this);
-        TriggerOperation = new TriggerOperation(this);
+        AdsOperator = new AdsOperator(this);
+        AimOperator = new AimOperator(this);
+        DrawOperator = new DrawOperator(this);
+        FaceOperator = new FaceOperator(this);
+        FpvOperator = new FpvOperator(this);
+        ReleaseOperator = new ReleaseOperator(this);
+        SwingOperator = new SwingOperator(this);
+        SwitchOperator = new SwitchOperator(this);
+        TriggerOperator = new TriggerOperator(this);
         AdsActionValidator = new AdsActionValidator(this);
         ApprovementValidator = new ApprovementValidator(this);
         FullAutoValidator = new FullAutoValidator(this);
@@ -80,23 +80,23 @@ internal class InfoHolder
 
     internal float FireMax { get; set; }
 
-    internal AdsOperation AdsOperation { get; }
+    internal AdsOperator AdsOperator { get; }
 
-    internal AimOperation AimOperation { get; }
+    internal AimOperator AimOperator { get; }
 
-    internal DrawOperation DrawOperation { get; }
+    internal DrawOperator DrawOperator { get; }
 
-    internal FaceOperation FaceOperation { get; }
+    internal FaceOperator FaceOperator { get; }
 
-    internal FpvOperation FpvOperation { get; }
+    internal FpvOperator FpvOperator { get; }
 
-    internal ReleaseOperation ReleaseOperation { get; }
+    internal ReleaseOperator ReleaseOperator { get; }
 
-    internal SwingOperation SwingOperation { get; }
+    internal SwingOperator SwingOperator { get; }
 
-    internal SwitchOperation SwitchOperation { get; }
+    internal SwitchOperator SwitchOperator { get; }
 
-    internal TriggerOperation TriggerOperation { get; }
+    internal TriggerOperator TriggerOperator { get; }
 
     internal AdsActionValidator AdsActionValidator { get; }
 

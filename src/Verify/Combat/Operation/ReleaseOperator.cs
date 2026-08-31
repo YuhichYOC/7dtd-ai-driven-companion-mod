@@ -1,6 +1,6 @@
 /*
  *
- * ReleaseOperation.cs
+ * ReleaseOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -21,13 +21,13 @@
 
 using CompanionAIVerify.Combat.Scene;
 
-namespace CompanionAIVerify.Combat.Operate;
+namespace CompanionAIVerify.Combat.Operation;
 
-internal class ReleaseOperation
+internal class ReleaseOperator
 {
     private readonly InfoHolder _i;
 
-    internal ReleaseOperation(InfoHolder i)
+    internal ReleaseOperator(InfoHolder i)
     {
         _i = i;
     }
@@ -45,19 +45,19 @@ internal class ReleaseOperation
 
     private void ReleaseMelee()
     {
-        if (_i.SwingOperation.Pressed)
+        if (_i.SwingOperator.Pressed)
         {
             _i.Self.Attack(true); // release ( スイングの後始末 )
-            _i.SwingOperation.Pressed = false;
+            _i.SwingOperator.Pressed = false;
         }
 
         // v0.8(B)-A: 張っていた aim-assist の attackTarget を解除。
         //   client では SetAttackTarget(null,0) も entityDistributer.SendPacket(EntityAlive:5932)で NRE になるため
         //   フィールドを直接 null 代入する。attackTargetTime は元々 0 のまま＝失効パス(3367-)にも入らない。
-        if (_i.AimOperation.AimAssistSet)
+        if (_i.AimOperator.AimAssistSet)
         {
             _i.Self.attackTarget = null; // client-safe な直接解除
-            _i.AimOperation.AimAssistSet = false;
+            _i.AimOperator.AimAssistSet = false;
         }
     }
 
@@ -65,29 +65,29 @@ internal class ReleaseOperation
     // ADS も解除
     private void ReleaseRanged()
     {
-        if (_i.TriggerOperation.Pressed)
+        if (_i.TriggerOperator.Pressed)
         {
             _i.Self.Attack(true);
-            _i.TriggerOperation.Pressed = false;
+            _i.TriggerOperator.Pressed = false;
         }
-        else if (_i.DrawOperation.Pressed)
+        else if (_i.DrawOperator.Pressed)
         {
             // ★ [bow] 弓ドロー中は release = 発射になる
             // 開放要求は「キャンセル ( 矢を消費しない引き戻し ) 」へ振り替えて暴発を防ぐ
             // CancelAction は m_bActivated 中に triggerReleased して活性を落とす
             // 矢は ConsumeAmmo を通らないため消費されない ( ItemActionCatapult : 176-196 )
-            if (_i.DrawOperation.Drawing)
+            if (_i.DrawOperator.Drawing)
             {
                 var bow = _i.GetHeldCatapult();
-                if (_i.DrawOperation.BowHolding) bow.Item1.CancelAction(bow.Item2);
-                _i.DrawOperation.Drawing =
+                if (_i.DrawOperator.BowHolding) bow.Item1.CancelAction(bow.Item2);
+                _i.DrawOperator.Drawing =
                     false; // 武器が既に切替済み ( cat == null ) でもフラグは必ず落とす ( StopHolding が旧弓を CancelAction 済み )
             }
 
             _i.Self.Attack(true);
-            _i.DrawOperation.Pressed = false;
+            _i.DrawOperator.Pressed = false;
         }
 
-        _i.AdsOperation.Run(false);
+        _i.AdsOperator.Run(false);
     }
 }

@@ -1,6 +1,6 @@
 /*
  *
- * FpvOperation.cs
+ * FaceOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -20,39 +20,32 @@
  */
 
 using CompanionAIVerify.Combat.Scene;
-using CompanionAIVerify.Config;
-using CompanionAIVerify.Log;
+using UnityEngine;
 
-namespace CompanionAIVerify.Combat.Operate;
+namespace CompanionAIVerify.Combat.Operation;
 
-internal class FpvOperation
+internal class FaceOperator
 {
     private readonly InfoHolder _i;
-    private bool _fpvLogged;
 
-    private bool _lastFpv;
-
-    internal FpvOperation(InfoHolder i)
+    internal FaceOperator(InfoHolder i)
     {
         _i = i;
-        _fpvLogged = false;
     }
 
-    // 交戦の手前で bFirstPersonView を実ログ
-    // 初回 or 変化時のみ出力
+    // ピッチ込みで対象中心付近を狙う
+    // 低い脅威にも当てるため y を潰さない
+    // 変換式は facing と同一 ( EPL : 2310, 248-252
+    // camera 経由で攻撃レイが操舵される
     internal void Run()
     {
-        var fpv = _i.Self.bFirstPersonView;
-        if (_fpvLogged && fpv == _lastFpv) return;
+        var eye = _i.Self.position + Vector3.up * 1.5f; // 概算カメラ高
+        var aim = _i.Target.Target.position + Vector3.up * 0.9f; // 概算胴中心
+        var dir = aim - eye;
+        if (dir.sqrMagnitude < 1e-6f) return;
 
-        _fpvLogged = true;
-        _lastFpv = fpv;
-        Logger.LogFpv(_i, fpv);
-
-        if (!fpv && Cfg.ForceFirstPerson)
-        {
-            _i.Self.SetFirstPersonView(true, false); // spawn 経路の誤設定を自己修復
-            Logger.LogFpv(_i);
-        }
+        var euler = Quaternion.LookRotation(dir.normalized, Vector3.up).eulerAngles;
+        euler.x *= -1f; // ピッチ反転（EPL:239, 251）
+        _i.Self.SetRotation(euler);
     }
 }

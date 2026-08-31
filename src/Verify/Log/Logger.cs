@@ -320,7 +320,7 @@ internal static class Logger
         if (!(Time.time >= LogInfoHolder.NextHoldLogTime)) return;
         LogInfoHolder.NextHoldLogTime = Time.time + Cfg.LogThrottleSec;
         PrintLog(
-            $"[CompanionAI] hold: {i.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m reason={i.AimOperation.Reason}"
+            $"[CompanionAI] hold: {i.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m reason={i.AimOperator.Reason}"
         );
     }
 
@@ -343,7 +343,7 @@ internal static class Logger
                 : hitE.entityId == i.Target.Target.entityId ? "TARGET" : "OTHER id=" + hitE.entityId;
             PrintLog(
                 $"[CompanionAI] fire: {i.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m " +
-                $"mag={after} aim={i.AimOperation.Mode}({i.AimOperation.Part}) auto={(fullAuto ? "on" : "off")} " +
+                $"mag={after} aim={i.AimOperator.Mode}({i.AimOperator.Part}) auto={(fullAuto ? "on" : "off")} " +
                 $"ads={(i.Self.AimingGun ? "on" : "off")} -> hit={hitDesc}"
             );
         }
@@ -393,7 +393,7 @@ internal static class Logger
     {
         PrintLog(
             $"[CompanionAI] bow: loose {i.Target.Kind} id={i.Target.Target.entityId} d={i.Distance:0.0}m " +
-            $"strain={strain:0.00} mag={after} aim={i.AimOperation.Mode}({i.AimOperation.Part}) ads={(i.Self.AimingGun ? "on" : "off")} -> hit={hit}"
+            $"strain={strain:0.00} mag={after} aim={i.AimOperator.Mode}({i.AimOperator.Part}) ads={(i.Self.AimingGun ? "on" : "off")} -> hit={hit}"
         );
     }
 

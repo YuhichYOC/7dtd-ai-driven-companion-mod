@@ -1,6 +1,6 @@
 /*
  *
- * DrawOperation.cs
+ * DrawOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -25,14 +25,14 @@ using CompanionAIVerify.Config;
 using UnityEngine;
 using Logger = CompanionAIVerify.Log.Logger;
 
-namespace CompanionAIVerify.Combat.Operate;
+namespace CompanionAIVerify.Combat.Operation;
 
-internal class DrawOperation
+internal class DrawOperator
 {
     private readonly InfoHolder _i;
     private Tuple<ItemActionCatapult, ItemActionCatapult.ItemActionDataCatapult> _bow;
 
-    internal DrawOperation(InfoHolder i)
+    internal DrawOperator(InfoHolder i)
     {
         _i = i;
     }

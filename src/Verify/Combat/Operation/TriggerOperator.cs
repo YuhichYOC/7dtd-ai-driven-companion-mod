@@ -1,6 +1,6 @@
 /*
  *
- * TriggerOperation.cs
+ * TriggerOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -24,9 +24,9 @@ using CompanionAIVerify.Config;
 using UnityEngine;
 using Logger = CompanionAIVerify.Log.Logger;
 
-namespace CompanionAIVerify.Combat.Operate;
+namespace CompanionAIVerify.Combat.Operation;
 
-internal class TriggerOperation
+internal class TriggerOperator
 {
     private readonly InfoHolder _i;
 
@@ -34,7 +34,7 @@ internal class TriggerOperation
 
     private float _nextFireTime;
 
-    internal TriggerOperation(InfoHolder i)
+    internal TriggerOperator(InfoHolder i)
     {
         _i = i;
     }

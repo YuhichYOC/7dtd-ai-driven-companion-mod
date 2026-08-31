@@ -1,6 +1,6 @@
 /*
  *
- * AdsOperation.cs
+ * AdsOperator.cs
  *
  * Copyright 2026 Yuichi Yoshii
  *     吉井雄一 @ 吉井産業  you.65535.kir@gmail.com
@@ -22,13 +22,13 @@
 using CompanionAIVerify.Combat.Scene;
 using CompanionAIVerify.Config;
 
-namespace CompanionAIVerify.Combat.Operate;
+namespace CompanionAIVerify.Combat.Operation;
 
-internal class AdsOperation
+internal class AdsOperator
 {
     private readonly InfoHolder _i;
 
-    internal AdsOperation(InfoHolder i)
+    internal AdsOperator(InfoHolder i)
     {
         _i = i;
     }
