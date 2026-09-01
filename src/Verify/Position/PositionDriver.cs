@@ -46,16 +46,16 @@ internal static class PositionDriver
         InfoHolder.Self = self;
         InfoHolder.Leader = leader;
         InfoHolder.Threat = threat;
-        ResolvePosition(PositionResolver.Action)?.Run(InfoHolder);
+        ResolvePattern(PositionResolver.Pattern)?.Run(InfoHolder);
     }
 
-    private static IPositionPattern ResolvePosition(PositionResolver.Actions action)
+    private static IPositionPattern ResolvePattern(PositionResolver.Patterns pattern)
     {
-        return action switch
+        return pattern switch
         {
-            PositionResolver.Actions.Follow01 => Patterns.First(p => p.Name == "FollowPattern01"),
-            PositionResolver.Actions.Follow02 => Patterns.First(p => p.Name == "FollowPattern02"),
-            PositionResolver.Actions.Melee01 => Patterns.First(p => p.Name == "MeleePattern01"),
+            PositionResolver.Patterns.Follow01 => Patterns.First(p => p.Name == "FollowPattern01"),
+            PositionResolver.Patterns.Follow02 => Patterns.First(p => p.Name == "FollowPattern02"),
+            PositionResolver.Patterns.Melee01 => Patterns.First(p => p.Name == "MeleePattern01"),
             _ => null
         };
     }

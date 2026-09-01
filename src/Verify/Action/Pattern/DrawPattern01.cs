@@ -29,13 +29,13 @@ namespace CompanionAIVerify.Action.Pattern;
 /*
  * 弓用アクション実装パターン 1
  */
-internal class DrawPattern01 : ICombatAction
+internal class DrawPattern01 : IActionPattern
 {
     private InfoHolder _i;
 
-    string ICombatAction.Name => "DrawPattern01";
+    string IActionPattern.Name => "DrawPattern01";
 
-    void ICombatAction.Run(InfoHolder i)
+    void IActionPattern.Run(InfoHolder i)
     {
         _i = i;
 

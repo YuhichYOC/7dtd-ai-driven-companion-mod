@@ -33,7 +33,7 @@ internal static class ActionDriver
 {
     internal static ActionResolver ActionResolver;
 
-    private static readonly List<ICombatAction> Actions =
+    private static readonly List<IActionPattern> Patterns =
     [
         new DrawPattern01(),
         new LauncherPattern01(),
@@ -57,17 +57,17 @@ internal static class ActionDriver
     {
         InfoHolder.Self = self;
         InfoHolder.Target = threat;
-        ResolveAction(ActionResolver.Action)?.Run(InfoHolder);
+        ResolvePattern(ActionResolver.Pattern)?.Run(InfoHolder);
     }
 
-    private static ICombatAction ResolveAction(ActionResolver.Actions action)
+    private static IActionPattern ResolvePattern(ActionResolver.Patterns pattern)
     {
-        return action switch
+        return pattern switch
         {
-            ActionResolver.Actions.Draw01 => Actions.First(a => a.Name == "DrawPattern01"),
-            ActionResolver.Actions.Launcher01 => Actions.First(a => a.Name == "LauncherPattern01"),
-            ActionResolver.Actions.Melee01 => Actions.First(a => a.Name == "MeleePattern01"),
-            ActionResolver.Actions.Trigger01 => Actions.First(a => a.Name == "TriggerPattern01"),
+            ActionResolver.Patterns.Draw01 => Patterns.First(a => a.Name == "DrawPattern01"),
+            ActionResolver.Patterns.Launcher01 => Patterns.First(a => a.Name == "LauncherPattern01"),
+            ActionResolver.Patterns.Melee01 => Patterns.First(a => a.Name == "MeleePattern01"),
+            ActionResolver.Patterns.Trigger01 => Patterns.First(a => a.Name == "TriggerPattern01"),
             _ => null
         };
     }

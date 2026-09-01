@@ -58,10 +58,10 @@ internal class ActionResolver
 
     internal ActionResolver()
     {
-        Action = Actions.None;
+        Pattern = Patterns.None;
     }
 
-    internal Actions Action { get; private set; }
+    internal Patterns Pattern { get; private set; }
 
     // WeaponSelector が持ち替える先の希望モード
     //   この resolver の「武器の決定」
@@ -83,14 +83,14 @@ internal class ActionResolver
     //   実際に保持中の武器型からバインドするため、切替の可否・1 frame 遅延に関わらず held と必ず一致する
     internal void ResolveAction(EntityPlayerLocal self)
     {
-        Action = ClassifyHeld(self) switch
+        Pattern = ClassifyHeld(self) switch
         {
-            HeldKinds.None => Actions.None,
-            HeldKinds.Bow => Actions.Draw01,
-            HeldKinds.Melee => Actions.Melee01,
-            HeldKinds.Launcher => Actions.Launcher01,
-            HeldKinds.Gun => Actions.Trigger01,
-            _ => Actions.None
+            HeldKinds.None => Patterns.None,
+            HeldKinds.Bow => Patterns.Draw01,
+            HeldKinds.Melee => Patterns.Melee01,
+            HeldKinds.Launcher => Patterns.Launcher01,
+            HeldKinds.Gun => Patterns.Trigger01,
+            _ => Patterns.None
         };
     }
 
@@ -135,7 +135,7 @@ internal class ActionResolver
         };
     }
 
-    internal enum Actions
+    internal enum Patterns
     {
         None,
         Draw01,

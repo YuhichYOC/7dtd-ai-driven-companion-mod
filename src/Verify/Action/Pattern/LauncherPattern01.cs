@@ -31,13 +31,13 @@ namespace CompanionAIVerify.Action.Pattern;
  * TriggerActionXX とほぼ同じだが、扱う武器が違うため別のアクションとしている
  * 爆発物による自爆を防ぐ分岐を盛り込む予定
  */
-internal class LauncherPattern01 : ICombatAction
+internal class LauncherPattern01 : IActionPattern
 {
     private InfoHolder _i;
 
-    string ICombatAction.Name => "LauncherPattern01";
+    string IActionPattern.Name => "LauncherPattern01";
 
-    void ICombatAction.Run(InfoHolder i)
+    void IActionPattern.Run(InfoHolder i)
     {
         _i = i;
 
