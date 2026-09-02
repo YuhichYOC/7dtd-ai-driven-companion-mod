@@ -21,6 +21,7 @@
 
 using CompanionAIVerify.Config;
 using CompanionAIVerify.Perception;
+using UnityEngine;
 
 namespace CompanionAIVerify.Stance;
 
@@ -55,8 +56,8 @@ internal class PositionResolver
 
         Pattern = self.GetDistanceSq(threat.Target) switch
         {
-            var d when d <= Cfg.MeleeApproachMaxDistance => Patterns.Melee01,
-            var d when d <= Cfg.ThreatScanRadius => Patterns.Follow02,
+            var d when d <= Mathf.Pow(Cfg.MeleeApproachMaxDistance, 2.0f) => Patterns.Melee01,
+            var d when d <= Mathf.Pow(Cfg.ThreatScanRadius, 2.0f) => Patterns.Follow02,
             _ => Patterns.Follow01
         };
         // TODO ( 遅い判断 )
