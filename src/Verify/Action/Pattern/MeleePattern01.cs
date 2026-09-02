@@ -53,7 +53,8 @@ internal class MeleePattern01 : IActionPattern
         if (_i.SwitchOperator.Switched) return;
 
         // ★ ( 1 ) 交戦の手前で bFirstPersonView を実ログ確定
-        if (_i.ReachValidator.TargetInReach()) _i.FpvOperator.Run();
+        if (!_i.ReachValidator.TargetInReach()) return;
+        _i.FpvOperator.Run();
 
         // ★ ( 2 ) 近接交戦
         // 3D エイム ( ピッチ込み ) -> press 駆動スイング
